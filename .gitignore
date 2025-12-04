@@ -1,0 +1,23 @@
+# Editor directories and files
+.vscode/*
+!.vscode/extensions.json
+.trae
+.vscode
+.idea
+.DS_Store
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+# builds
+bin/
+build/
+builds/
+dist/
+
+# environment
+.env*
+config.json
+!*.example
