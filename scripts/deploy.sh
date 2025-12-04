@@ -605,19 +605,33 @@ setup_environment() {
     [[ -z "$old_env_hash" ]] && old_env_hash=$(md5sum "$env_file" 2>/dev/null | awk '{print $1}')
   fi
   
-  # 复制源文件
-  if [[ -n "${ENV_SRC}" && -f "${ENV_SRC}" ]]; then
-    cp "${ENV_SRC}" "${env_file}"
-    log_info "使用自定义环境文件: ${ENV_SRC}"
-  elif [[ -f ".env" ]]; then
-    cp .env "${env_file}"
-    log_info "使用项目 .env 文件"
-  elif [[ -f ".env.example" ]]; then
-    cp .env.example "${env_file}"
-    log_info "使用 .env.example 模板"
+  if [[ "$NON_INTERACTIVE" == true ]]; then
+    if [[ -n "${ENV_SRC}" && -f "${ENV_SRC}" ]]; then
+      cp "${ENV_SRC}" "${env_file}"
+      log_info "使用自定义环境文件: ${ENV_SRC}"
+    elif [[ -f ".env" ]]; then
+      cp .env "${env_file}"
+      log_info "使用项目 .env 文件"
+    elif [[ -f "${env_file}" ]]; then
+      log_info "非交互模式，沿用已有环境文件"
+    else
+      log_error "非交互模式且未提供有效环境文件，请使用 --env 或确保项目根目录存在 .env"
+      exit 1
+    fi
   else
-    log_warning "未找到环境文件，创建空文件"
-    touch "${env_file}"
+    if [[ -n "${ENV_SRC}" && -f "${ENV_SRC}" ]]; then
+      cp "${ENV_SRC}" "${env_file}"
+      log_info "使用自定义环境文件: ${ENV_SRC}"
+    elif [[ -f ".env" ]]; then
+      cp .env "${env_file}"
+      log_info "使用项目 .env 文件"
+    elif [[ -f ".env.example" ]]; then
+      cp .env.example "${env_file}"
+      log_info "使用 .env.example 模板"
+    else
+      log_warning "未找到环境文件，创建空文件"
+      touch "${env_file}"
+    fi
   fi
   
   # 应用覆盖
