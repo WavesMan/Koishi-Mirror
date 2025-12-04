@@ -129,6 +129,9 @@ func (c *Client) UploadFile(ctx context.Context, key string, reader io.Reader, c
     if contentLength < 0 { contentLength = 0 }
     in.ContentLength = aws.Int64(contentLength)
 
+    if c.logger != nil {
+        c.logger.Debug("s3", "upload_start", map[string]interface{}{"op": "PutObject", "bucket": c.bucket, "key": key, "content_type": contentType, "content_length": contentLength, "checksum_calc": "when_required"})
+    }
     out, err := c.client.PutObject(ctx, in)
     if err != nil {
         if c.logger != nil {
@@ -138,6 +141,12 @@ func (c *Client) UploadFile(ctx context.Context, key string, reader io.Reader, c
         return err
     }
     c.logMetadata(out.ResultMetadata, "PutObject", key)
+    if c.logger != nil {
+        f := map[string]interface{}{"op": "PutObject", "bucket": c.bucket, "key": key}
+        if out.ETag != nil { f["etag"] = aws.ToString(out.ETag) }
+        if out.VersionId != nil { f["version_id"] = aws.ToString(out.VersionId) }
+        c.logger.Info("s3", "upload_done", f)
+    }
     return nil
 }
 
@@ -149,6 +158,7 @@ func (c *Client) DownloadFile(ctx context.Context, key string) (io.ReadCloser, e
     }
     key = strings.ReplaceAll(key, "\\", "/")
 
+    if c.logger != nil { c.logger.Debug("s3", "download_start", map[string]interface{}{"op": "GetObject", "bucket": c.bucket, "key": key}) }
     resp, err := c.client.GetObject(ctx, &s3.GetObjectInput{
         Bucket: aws.String(c.bucket),
         Key:    aws.String(key),
@@ -161,6 +171,11 @@ func (c *Client) DownloadFile(ctx context.Context, key string) (io.ReadCloser, e
         return nil, err
     }
     c.logMetadata(resp.ResultMetadata, "GetObject", key)
+    if c.logger != nil {
+        f := map[string]interface{}{"op": "GetObject", "bucket": c.bucket, "key": key, "content_length": resp.ContentLength}
+        if resp.ETag != nil { f["etag"] = aws.ToString(resp.ETag) }
+        c.logger.Info("s3", "download_headers", f)
+    }
 
     return resp.Body, nil
 }
@@ -173,6 +188,7 @@ func (c *Client) GetFileInfo(ctx context.Context, key string) (*types.Object, er
     }
     key = strings.ReplaceAll(key, "\\", "/")
 
+    if c.logger != nil { c.logger.Debug("s3", "head_start", map[string]interface{}{"op": "HeadObject", "bucket": c.bucket, "key": key}) }
     resp, err := c.client.HeadObject(ctx, &s3.HeadObjectInput{
         Bucket: aws.String(c.bucket),
         Key:    aws.String(key),
@@ -185,6 +201,12 @@ func (c *Client) GetFileInfo(ctx context.Context, key string) (*types.Object, er
         return nil, err
     }
     c.logMetadata(resp.ResultMetadata, "HeadObject", key)
+    if c.logger != nil {
+        f := map[string]interface{}{"op": "HeadObject", "bucket": c.bucket, "key": key, "content_length": resp.ContentLength}
+        if resp.ETag != nil { f["etag"] = aws.ToString(resp.ETag) }
+        if resp.LastModified != nil { f["last_modified"] = aws.ToTime(resp.LastModified) }
+        c.logger.Info("s3", "head_done", f)
+    }
 
     return &types.Object{
         Key:          aws.String(key),
@@ -207,6 +229,7 @@ func (c *Client) ListObjects(ctx context.Context, prefix string, delimiter strin
 	var continuationToken *string
 
 	for {
+        if c.logger != nil { c.logger.Debug("s3", "list_start", map[string]interface{}{"op": "ListObjectsV2", "bucket": c.bucket, "prefix": fullPrefix, "delimiter": delimiter}) }
         resp, err := c.client.ListObjectsV2(ctx, &s3.ListObjectsV2Input{
             Bucket:            aws.String(c.bucket),
             Prefix:            aws.String(fullPrefix),
@@ -221,6 +244,9 @@ func (c *Client) ListObjects(ctx context.Context, prefix string, delimiter strin
             return nil, err
         }
         c.logMetadata(resp.ResultMetadata, "ListObjectsV2", fullPrefix)
+        if c.logger != nil {
+            c.logger.Info("s3", "list_page", map[string]interface{}{"op": "ListObjectsV2", "bucket": c.bucket, "prefix": fullPrefix, "count": len(resp.Contents), "is_truncated": aws.ToBool(resp.IsTruncated)})
+        }
 
         objects = append(objects, resp.Contents...)
 
@@ -242,6 +268,7 @@ func (c *Client) DeleteObject(ctx context.Context, key string) error {
     }
     key = strings.ReplaceAll(key, "\\", "/")
 
+    if c.logger != nil { c.logger.Debug("s3", "delete_start", map[string]interface{}{"op": "DeleteObject", "bucket": c.bucket, "key": key}) }
     out, err := c.client.DeleteObject(ctx, &s3.DeleteObjectInput{
         Bucket: aws.String(c.bucket),
         Key:    aws.String(key),
@@ -254,6 +281,7 @@ func (c *Client) DeleteObject(ctx context.Context, key string) error {
         return err
     }
     c.logMetadata(out.ResultMetadata, "DeleteObject", key)
+    if c.logger != nil { c.logger.Info("s3", "delete_done", map[string]interface{}{"op": "DeleteObject", "bucket": c.bucket, "key": key}) }
     return nil
 }
 
