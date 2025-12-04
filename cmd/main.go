@@ -66,6 +66,9 @@ func main() {
     ds.SetLogger(logger)
     s3Client.SetLogger(logger)
     if store != nil { _ = store.PurgeLogsOlderThan(context.Background(), 30) }
+    if store != nil {
+        logger.Info("health", "db_log_test_boot", map[string]interface{}{"ok": true})
+    }
 
 	// 初始化Gin路由
 	gin.SetMode(gin.ReleaseMode)

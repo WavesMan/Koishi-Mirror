@@ -26,6 +26,7 @@ type Handler struct {
     syncManager *sync.SyncManager
     vc          *version.Controller
     ds          *datasource.Source
+    store       *pgstore.Store
 }
 
 // NewHandler 创建新的API处理器
@@ -36,6 +37,7 @@ func NewHandler(cfg *config.Config, s3Client *s3client.Client, syncManager *sync
         syncManager: syncManager,
         vc:          version.NewController(cfg, s3Client, syncManager, store),
         ds:          ds,
+        store:       store,
     }
 }
 
@@ -53,6 +55,7 @@ func (h *Handler) RegisterRoutes(r *gin.Engine) {
     r.POST("/api/sync", h.TriggerSync)
     r.POST("/api/reconcile", h.Reconcile)
     r.POST("/api/retry-failed", h.RetryFailed)
+    r.POST("/api/log-test", h.LogTest)
     r.GET("/api/index", h.GetIndex)
     r.GET("/api/registry", h.GetRegistry)
     r.GET("/-/v1/search", h.SearchV1)
@@ -67,6 +70,19 @@ func (h *Handler) RegisterRoutes(r *gin.Engine) {
     r.NoRoute(h.RegistryFallback)
     r.GET("/download/:name/:version", h.DownloadPackage)
     r.GET("/index.json", h.GetIndex)
+}
+
+func (h *Handler) LogTest(c *gin.Context) {
+    if h.store == nil {
+        c.JSON(http.StatusInternalServerError, gin.H{"error": "store not configured"})
+        return
+    }
+    fields := map[string]interface{}{"ok": true, "time": time.Now().Format(time.RFC3339)}
+    if err := h.store.InsertLog(c.Request.Context(), "info", "health", "db_log_test", fields); err != nil {
+        c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+        return
+    }
+    c.JSON(http.StatusOK, gin.H{"message": "ok"})
 }
 
 func (h *Handler) Reconcile(c *gin.Context) {
