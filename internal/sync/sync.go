@@ -1,24 +1,25 @@
 package sync
 
 import (
+    "bufio"
     "bytes"
     "context"
     "encoding/json"
     "fmt"
     "io"
-    "sort"
     "net/http"
     "os"
+    "sort"
     "strings"
     "sync"
     "time"
 
     "npm-mirror/config"
+    "npm-mirror/internal/datasource"
+    "npm-mirror/internal/logging"
     "npm-mirror/internal/models"
     "npm-mirror/internal/s3client"
     pgstore "npm-mirror/internal/storage/postgres"
-    "npm-mirror/internal/datasource"
-    "npm-mirror/internal/logging"
 )
 
 // SyncManager 同步管理器
@@ -282,13 +283,85 @@ func (sm *SyncManager) syncPackage(ctx context.Context, pkg models.Package) erro
     if sm.logger != nil { sm.logger.Debug("sync", "download_done", map[string]interface{}{"name": pkg.Name, "version": pkg.Version, "bytes": fileSize}) }
 
 	// 重置文件指针
-	if _, err := tempFile.Seek(0, 0); err != nil {
-		sm.updatePackageState(pkgKey, "failed", 0)
-		return fmt.Errorf("重置文件指针失败: %v", err)
-	}
+    if _, err := tempFile.Seek(0, 0); err != nil {
+        sm.updatePackageState(pkgKey, "failed", 0)
+        return fmt.Errorf("重置文件指针失败: %v", err)
+    }
+
+    // 校验并修复可能的 chunked 编码污染：
+    // 规则：
+    // - 若 gzip 魔数 (0x1F,0x8B) 不在偏移 0，则视为前部污染，截取从魔数开始的内容
+    // - 若文件尾为 "0\r\n\r\n"（chunk 结尾），则去掉尾部 5 字节
+    // 最终确保上传对象为纯 gzip tarball
+    if _, err := tempFile.Seek(0, 0); err != nil {
+        sm.updatePackageState(pkgKey, "failed", 0)
+        return fmt.Errorf("重置文件指针失败: %v", err)
+    }
+    br := bufio.NewReader(tempFile)
+    head, _ := br.Peek(64)
+    gzipIdx := -1
+    for i := 0; i+1 < len(head); i++ {
+        if head[i] == 0x1F && head[i+1] == 0x8B {
+            gzipIdx = i
+            break
+        }
+    }
+    // 计算尾部是否有 chunk 终止符
+    info, _ := tempFile.Stat()
+    total := info.Size()
+    suffix := int64(0)
+    if total >= 5 {
+        if _, err := tempFile.Seek(total-5, 0); err == nil {
+            tail := make([]byte, 5)
+            if _, err := io.ReadFull(tempFile, tail); err == nil {
+                if tail[0] == '0' && tail[1] == '\r' && tail[2] == '\n' && tail[3] == '\r' && tail[4] == '\n' {
+                    suffix = 5
+                }
+            }
+        }
+    }
+    // 清理逻辑
+    if gzipIdx != 0 || suffix > 0 {
+        start := int64(0)
+        if gzipIdx > 0 { start = int64(gzipIdx) }
+        length := total - suffix - start
+        if length <= 0 {
+            sm.updatePackageState(pkgKey, "failed", 0)
+            return fmt.Errorf("清理后长度异常: total=%d start=%d suffix=%d", total, start, suffix)
+        }
+        cleaned, err := os.CreateTemp("", "npm-clean-*.tgz")
+        if err != nil {
+            sm.updatePackageState(pkgKey, "failed", 0)
+            return fmt.Errorf("创建清理临时文件失败: %v", err)
+        }
+        defer os.Remove(cleaned.Name())
+        if _, err := tempFile.Seek(start, 0); err != nil {
+            sm.updatePackageState(pkgKey, "failed", 0)
+            return fmt.Errorf("定位清理起点失败: %v", err)
+        }
+        n, err := io.CopyN(cleaned, tempFile, length)
+        if err != nil && err != io.EOF {
+            sm.updatePackageState(pkgKey, "failed", 0)
+            return fmt.Errorf("复制清理数据失败: %v", err)
+        }
+        if _, err := cleaned.Seek(0, 0); err != nil {
+            sm.updatePackageState(pkgKey, "failed", 0)
+            return fmt.Errorf("重置清理文件指针失败: %v", err)
+        }
+        tempFile.Close()
+        tempFile = cleaned
+        fileSize = n
+        if sm.logger != nil { sm.logger.Info("sync", "clean_chunk_fix", map[string]interface{}{"name": pkg.Name, "version": pkg.Version, "start": start, "suffix": suffix, "bytes": n}) }
+    } else {
+        // 正常 gzip，无需清理，确保从头开始
+        if _, err := tempFile.Seek(0, 0); err != nil {
+            sm.updatePackageState(pkgKey, "failed", 0)
+            return fmt.Errorf("重置文件指针失败: %v", err)
+        }
+    }
 
 	// 上传到S3
-	s3Key := sm.s3Client.GetPackageKey(pkg.Name, pkg.Version)
+    s3Key := sm.s3Client.GetPackageKey(pkg.Name, pkg.Version)
     if sm.logger != nil { sm.logger.Debug("s3", "upload_start", map[string]interface{}{"key": s3Key, "size": fileSize}) }
     if err := sm.s3Client.UploadFile(ctx, s3Key, tempFile, "application/gzip", fileSize); err != nil {
         sm.updatePackageState(pkgKey, "failed", 0)
@@ -296,6 +369,18 @@ func (sm *SyncManager) syncPackage(ctx context.Context, pkg models.Package) erro
         return fmt.Errorf("上传S3失败: %v", err)
     }
     if sm.logger != nil { sm.logger.Debug("s3", "upload_done", map[string]interface{}{"key": s3Key, "size": fileSize}) }
+
+    // 校验 S3 对象大小，确保与本地一致
+    if info, err := sm.s3Client.GetFileInfo(ctx, s3Key); err == nil {
+        var actual int64
+        if info.Size != nil { actual = *info.Size }
+        if actual != fileSize {
+            if sm.logger != nil { sm.logger.Warn("s3", "size_mismatch_after_upload", map[string]interface{}{"key": s3Key, "local": fileSize, "s3": actual}) }
+            // 标记为失败以便后续重试
+            sm.updatePackageState(pkgKey, "failed", actual)
+            return fmt.Errorf("S3对象大小不一致: 本地=%d S3=%d", fileSize, actual)
+        }
+    }
     _ = os.Remove(tempFile.Name())
 
 	// 更新包元数据

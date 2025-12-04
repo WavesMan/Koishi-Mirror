@@ -12,7 +12,7 @@
           <router-link to="/" class="nav-link">首页</router-link>
           <router-link to="/packages" class="nav-link">包列表</router-link>
           <router-link to="/stats" class="nav-link">统计</router-link>
-          <a href="https://github.com/waveyo/npm-mirror" target="_blank" class="nav-link github-link">
+          <a href="https://github.com/WavesMan/Koishi-Mirror" target="_blank" class="nav-link github-link">
             GitHub
           </a>
         </nav>
@@ -34,13 +34,77 @@
           <p class="description">高性能、安全可靠的 Koishi Plugins 镜像服务</p>
         </div>
         <div class="footer-right">
-          <a href="#">使用条款</a>
-          <a href="#">隐私政策</a>
+          <a href="#" @click.prevent="openPolicy('terms')">使用条款</a>
+          <a href="#" @click.prevent="openPolicy('privacy')">隐私政策</a>
         </div>
       </div>
     </footer>
+    <!-- 政策条款弹窗 -->
+    <div v-if="showPolicy" class="modal-overlay" @click.self="closePolicy">
+      <div class="modal-container">
+        <div class="modal-header">
+          <h3>服务条款与隐私政策</h3>
+          <button class="modal-close" @click="closePolicy">×</button>
+        </div>
+        <div class="modal-body markdown" v-html="policyHtml"></div>
+      </div>
+    </div>
   </div>
 </template>
+
+<script>
+import { ref, computed } from 'vue'
+import TermsMd from './assets/Terms_of_Service_nd_Privacy_Policy.md?raw'
+
+export default {
+  name: 'AppRoot',
+  setup() {
+    const showPolicy = ref(false)
+    const policySection = ref('terms')
+
+    const renderMarkdown = (md) => {
+      // 基础 Markdown 渲染（标题、粗体、斜体、链接、列表、代码块）
+      let html = md
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+      // 代码块 ```
+      html = html.replace(/```([\s\S]*?)```/g, (m, p1) => `<pre class="code"><code>${p1.replace(/\n/g, '\n')}</code></pre>`) 
+      // 标题
+      html = html.replace(/^###\s+(.+)$/gm, '<h3>$1</h3>')
+                 .replace(/^##\s+(.+)$/gm, '<h2>$1</h2>')
+                 .replace(/^#\s+(.+)$/gm, '<h1>$1</h1>')
+      // 粗体/斜体
+      html = html.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
+                 .replace(/\*([^*]+)\*/g, '<em>$1</em>')
+      // 链接 [text](url)
+      html = html.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank" rel="noopener">$1</a>')
+      // 列表（简单处理）
+      html = html.replace(/^(?:-\s+.+\n?)+/gm, (block) => {
+        const items = block.trim().split(/\n/).map(l => l.replace(/^-/,'').trim()).map(t => `<li>${t}</li>`).join('')
+        return `<ul>${items}</ul>`
+      })
+      // 段落
+      html = html.replace(/^(?!<h\d|<ul|<pre|<p|<blockquote)(.+)$/gm, '<p>$1</p>')
+      return html
+    }
+
+    const policyHtml = computed(() => renderMarkdown(TermsMd))
+
+    const openPolicy = (section) => {
+      policySection.value = section
+      showPolicy.value = true
+      document.body.style.overflow = 'hidden'
+    }
+    const closePolicy = () => {
+      showPolicy.value = false
+      document.body.style.overflow = ''
+    }
+
+    return { showPolicy, policyHtml, openPolicy, closePolicy }
+  }
+}
+</script>
 
 <style scoped>
 .app-container {
@@ -155,6 +219,53 @@
 .footer-right a:hover {
   color: var(--primary-color);
 }
+
+/* Modal */
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.45);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+}
+.modal-container {
+  width: min(900px, 92vw);
+  height: 80vh;
+  background: #fff;
+  border-radius: 10px;
+  box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+.modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 1rem 1.25rem;
+  border-bottom: 1px solid var(--border-color);
+}
+.modal-close {
+  border: none;
+  background: transparent;
+  font-size: 1.5rem;
+  line-height: 1;
+  cursor: pointer;
+  color: var(--text-secondary);
+}
+.modal-body {
+  padding: 1rem 1.25rem;
+  overflow: auto;
+  flex: 1;
+}
+.markdown h1, .markdown h2, .markdown h3 { margin: 1rem 0 0.5rem; color: var(--text-primary); }
+.markdown p { margin: 0.5rem 0; color: var(--text-secondary); }
+.markdown ul { padding-left: 1.2rem; }
+.markdown a { color: var(--primary-color); }
+.markdown .code { background: #f6f8fa; padding: 0.75rem; border-radius: 6px; overflow: auto; }
+.markdown { white-space: normal; word-break: break-word; }
 
 /* Transitions */
 .fade-enter-active,

@@ -1,0 +1,21 @@
+[Unit]
+Description=WaveYo-Koishi-Mirror service
+After=network.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=waveyo
+Group=waveyo
+WorkingDirectory=/opt/waveyo-koishi-mirror
+EnvironmentFile=/opt/waveyo-koishi-mirror/.env
+ExecStart=/opt/waveyo-koishi-mirror/bin/koishi-mirror
+Restart=on-failure
+RestartSec=5s
+StandardOutput=journal
+StandardError=journal
+LimitNOFILE=65536
+
+[Install]
+WantedBy=multi-user.target
+

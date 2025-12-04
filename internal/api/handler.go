@@ -44,7 +44,8 @@ func (h *Handler) RegisterRoutes(r *gin.Engine) {
     // 前端接口
     r.GET("/api/status", h.GetMirrorStatus)
     r.GET("/api/packages", h.GetPackages)
-    r.GET("/api/packages/:name", h.GetPackageDetail)
+    // 详情使用独立前缀，避免与 /api/packages/:name/versions 路由冲突
+    r.GET("/api/package/*name", h.GetPackageDetail)
     r.GET("/api/packages/:name/versions", h.GetPackageVersions)
     r.GET("/api/packages/:name/dist-tags", h.GetPackageDistTags)
     r.GET("/api/resolve", h.ResolveVersion)
@@ -223,7 +224,12 @@ func (h *Handler) GetPackages(c *gin.Context) {
 
 // GetPackageDetail 获取包详情
 func (h *Handler) GetPackageDetail(c *gin.Context) {
-	name := c.Param("name")
+    name := c.Param("name")
+    // 当路由使用 *name 捕获时，值可能以 / 开头，并可能包含编码
+    if strings.HasPrefix(name, "/") { name = name[1:] }
+    if u, err := url.PathUnescape(name); err == nil { name = u }
+    name = strings.ReplaceAll(name, "%2F", "/")
+    name = strings.ReplaceAll(name, "%2f", "/")
 
 	// 拉取数据源
     data, err := h.ds.Get(c.Request.Context())
@@ -247,14 +253,14 @@ func (h *Handler) GetPackageDetail(c *gin.Context) {
 	var detail models.PackageDetail
 	found := false
 
-	for _, pkg := range data.Packages {
-		if pkg.Name == name {
-			if !found {
-				detail.Name = pkg.Name
-				detail.Description = pkg.Description
-				detail.Author = pkg.Author
-				found = true
-			}
+    for _, pkg := range data.Packages {
+        if pkg.Name == name {
+            if !found {
+                detail.Name = pkg.Name
+                detail.Description = pkg.Description
+                detail.Author = pkg.Author
+                found = true
+            }
 
 			// 获取同步状态
 			pkgKey := fmt.Sprintf("%s@%s", pkg.Name, pkg.Version)
@@ -285,7 +291,7 @@ func (h *Handler) GetPackageDetail(c *gin.Context) {
 				SyncStatus: syncStatus,
 				SyncTime:   syncTime,
 			}
-			version.Dist.Tarball = fmt.Sprintf("/download/%s/%s", pkg.Name, pkg.Version)
+            version.Dist.Tarball = fmt.Sprintf("/download/%s/%s", url.PathEscape(pkg.Name), pkg.Version)
 			version.Dist.Size = pkg.Dist.Size
 			version.Dist.Shasum = pkg.Dist.Shasum
 

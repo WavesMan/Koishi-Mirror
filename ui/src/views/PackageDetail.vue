@@ -168,7 +168,8 @@ export default {
       error.value = ''
       
       try {
-        const res = await axios.get(`/packages/${encodeURIComponent(name)}`)
+        const encoded = encodeURIComponent(name)
+        const res = await axios.get(`/package/${encoded}`)
         packageDetail.value = res.data
         // Ensure versions are sorted (descending)
         if (packageDetail.value.versions) {

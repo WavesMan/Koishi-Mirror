@@ -57,4 +57,3 @@ func (l *Logger) Debug(category, msg string, fields map[string]interface{}) { l.
 func (l *Logger) Info(category, msg string, fields map[string]interface{})  { l.log(2, "info", category, msg, fields) }
 func (l *Logger) Warn(category, msg string, fields map[string]interface{})  { l.log(3, "warn", category, msg, fields) }
 func (l *Logger) Error(category, msg string, fields map[string]interface{}) { l.log(4, "error", category, msg, fields) }
-

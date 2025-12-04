@@ -18,7 +18,7 @@ const routes = [
     meta: { title: '包列表 - NPM镜像源' }
   },
   {
-    path: '/package/:name',
+    path: '/package/:name(.*)',
     name: 'PackageDetail',
     component: PackageDetail,
     props: route => ({ name: route.params.name }),

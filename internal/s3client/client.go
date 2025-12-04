@@ -106,13 +106,13 @@ func (c *Client) UploadFile(ctx context.Context, key string, reader io.Reader, c
         Body:        reader,
         ContentType: aws.String(contentType),
     }
-    if contentLength > 0 {
-        in.ContentLength = aws.Int64(contentLength)
-    }
+    // 强制设置 ContentLength，避免服务端推断不一致
+    if contentLength < 0 { contentLength = 0 }
+    in.ContentLength = aws.Int64(contentLength)
 
     _, err := c.client.PutObject(ctx, in)
 
-	return err
+    return err
 }
 
 // DownloadFile 从S3下载文件
