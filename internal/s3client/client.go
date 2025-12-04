@@ -130,7 +130,7 @@ func (c *Client) UploadFile(ctx context.Context, key string, reader io.Reader, c
     in.ContentLength = aws.Int64(contentLength)
 
     if c.logger != nil {
-        c.logger.Debug("s3", "upload_start", map[string]interface{}{"op": "PutObject", "bucket": c.bucket, "key": key, "content_type": contentType, "content_length": contentLength, "checksum_calc": "when_required"})
+        c.logger.Debug("s3", "put_start", map[string]interface{}{"op": "PutObject", "bucket": c.bucket, "key": key, "content_type": contentType, "content_length": contentLength, "checksum_calc": "when_required"})
     }
     out, err := c.client.PutObject(ctx, in)
     if err != nil {
@@ -145,7 +145,7 @@ func (c *Client) UploadFile(ctx context.Context, key string, reader io.Reader, c
         f := map[string]interface{}{"op": "PutObject", "bucket": c.bucket, "key": key}
         if out.ETag != nil { f["etag"] = aws.ToString(out.ETag) }
         if out.VersionId != nil { f["version_id"] = aws.ToString(out.VersionId) }
-        c.logger.Info("s3", "upload_done", f)
+        c.logger.Info("s3", "put_done", f)
     }
     return nil
 }
@@ -158,7 +158,7 @@ func (c *Client) DownloadFile(ctx context.Context, key string) (io.ReadCloser, e
     }
     key = strings.ReplaceAll(key, "\\", "/")
 
-    if c.logger != nil { c.logger.Debug("s3", "download_start", map[string]interface{}{"op": "GetObject", "bucket": c.bucket, "key": key}) }
+    if c.logger != nil { c.logger.Debug("s3", "get_start", map[string]interface{}{"op": "GetObject", "bucket": c.bucket, "key": key}) }
     resp, err := c.client.GetObject(ctx, &s3.GetObjectInput{
         Bucket: aws.String(c.bucket),
         Key:    aws.String(key),
@@ -174,7 +174,7 @@ func (c *Client) DownloadFile(ctx context.Context, key string) (io.ReadCloser, e
     if c.logger != nil {
         f := map[string]interface{}{"op": "GetObject", "bucket": c.bucket, "key": key, "content_length": resp.ContentLength}
         if resp.ETag != nil { f["etag"] = aws.ToString(resp.ETag) }
-        c.logger.Info("s3", "download_headers", f)
+        c.logger.Info("s3", "get_headers", f)
     }
 
     return resp.Body, nil
