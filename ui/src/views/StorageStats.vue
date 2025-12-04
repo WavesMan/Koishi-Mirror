@@ -100,7 +100,11 @@
 <script>
 import { ref, computed, onMounted, onUnmounted, nextTick } from 'vue'
 import axios from 'axios'
-import * as echarts from 'echarts'
+import { use as echartsUse, init as echartsInit } from 'echarts/core'
+import { BarChart } from 'echarts/charts'
+import { GridComponent, TooltipComponent } from 'echarts/components'
+import { CanvasRenderer } from 'echarts/renderers'
+echartsUse([BarChart, GridComponent, TooltipComponent, CanvasRenderer])
 
 export default {
   name: 'StorageStats',
@@ -163,14 +167,14 @@ export default {
     }
 
     // 渲染包大小分布图表
-    const renderSizeDistributionChart = () => {
+    const renderSizeDistributionChart = async () => {
       const chartDom = document.getElementById('sizeDistributionChart')
       if (!chartDom) return
       
       if (sizeDistributionChart) {
         sizeDistributionChart.dispose()
       }
-      sizeDistributionChart = echarts.init(chartDom)
+      sizeDistributionChart = echartsInit(chartDom)
 
       // 准备数据
       const packages = []
@@ -231,14 +235,14 @@ export default {
     }
 
     // 渲染版本数量分布图表
-    const renderVersionCountChart = () => {
+    const renderVersionCountChart = async () => {
       const chartDom = document.getElementById('versionCountChart')
       if (!chartDom) return
       
       if (versionCountChart) {
         versionCountChart.dispose()
       }
-      versionCountChart = echarts.init(chartDom)
+      versionCountChart = echartsInit(chartDom)
 
       // 准备数据
       const packages = []

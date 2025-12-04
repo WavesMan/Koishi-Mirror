@@ -7,7 +7,8 @@ export default defineConfig({
     rollupOptions: {
       output: {
         manualChunks: {
-          vue: ['vue', 'vue-router'],
+          vue: ['vue'],
+          router: ['vue-router'],
           echarts: ['echarts'],
           axios: ['axios']
         }

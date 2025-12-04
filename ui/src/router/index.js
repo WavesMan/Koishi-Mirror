@@ -9,26 +9,26 @@ const routes = [
     path: '/',
     name: 'Home',
     component: Home,
-    meta: { title: '首页 - NPM镜像源' }
+    meta: { title: '首页 - Mirror' }
   },
   {
     path: '/packages',
     name: 'PackageList',
     component: PackageList,
-    meta: { title: '包列表 - NPM镜像源' }
+    meta: { title: '包列表 - Mirror' }
   },
   {
     path: '/package/:name(.*)',
     name: 'PackageDetail',
     component: PackageDetail,
     props: route => ({ name: route.params.name }),
-    meta: { title: '包详情 - NPM镜像源' }
+    meta: { title: '包详情 - Mirror' }
   },
   {
     path: '/stats',
     name: 'StorageStats',
     component: StorageStats,
-    meta: { title: '存储统计 - NPM镜像源' }
+    meta: { title: '存储统计 - Mirror' }
   }
 ]
 
@@ -39,7 +39,7 @@ const router = createRouter({
 
 // 设置页面标题
 router.beforeEach((to, from, next) => {
-  document.title = to.meta.title || 'NPM镜像源'
+  document.title = to.meta.title || 'Koishi Mirror'
   next()
 })
 
