@@ -11,12 +11,13 @@ import (
     "time"
 
     "github.com/aws/aws-sdk-go-v2/aws"
-    "github.com/aws/aws-sdk-go-v2/aws/middleware"
+    awsmiddleware "github.com/aws/aws-sdk-go-v2/aws/middleware"
     awscfg "github.com/aws/aws-sdk-go-v2/config"
     "github.com/aws/aws-sdk-go-v2/credentials"
     "github.com/aws/aws-sdk-go-v2/service/s3"
     "github.com/aws/aws-sdk-go-v2/service/s3/types"
     awshttp "github.com/aws/aws-sdk-go-v2/aws/transport/http"
+    smmiddleware "github.com/aws/smithy-go/middleware"
     "npm-mirror/config"
     "npm-mirror/internal/logging"
 )
@@ -99,9 +100,9 @@ func New(cfg *config.Config) (*Client, error) {
 
 func (c *Client) SetLogger(l *logging.Logger) { c.logger = l }
 
-func (c *Client) logMetadata(meta middleware.Metadata, op string, key string) {
+func (c *Client) logMetadata(meta smmiddleware.Metadata, op string, key string) {
     if c.logger == nil { return }
-    rid, _ := middleware.GetRequestIDMetadata(meta)
+    rid, _ := awsmiddleware.GetRequestIDMetadata(meta)
     hid, _ := s3.GetHostIDMetadata(meta)
     c.logger.Info("s3", "request", map[string]interface{}{"op": op, "key": key, "request_id": rid, "host_id": hid})
 }
