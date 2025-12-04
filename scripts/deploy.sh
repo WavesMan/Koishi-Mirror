@@ -609,13 +609,10 @@ setup_environment() {
     if [[ -n "${ENV_SRC}" && -f "${ENV_SRC}" ]]; then
       cp "${ENV_SRC}" "${env_file}"
       log_info "使用自定义环境文件: ${ENV_SRC}"
-    elif [[ -f ".env" ]]; then
-      cp .env "${env_file}"
-      log_info "使用项目 .env 文件"
     elif [[ -f "${env_file}" ]]; then
       log_info "非交互模式，沿用已有环境文件"
     else
-      log_error "非交互模式且未提供有效环境文件，请使用 --env 或确保项目根目录存在 .env"
+      log_error "非交互模式：未提供 --env 且不存在 ${env_file}，拒绝覆盖为示例配置"
       exit 1
     fi
   else

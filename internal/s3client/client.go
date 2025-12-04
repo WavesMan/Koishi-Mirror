@@ -54,6 +54,7 @@ func New(cfg *config.Config) (*Client, error) {
     awsCfg, err := awscfg.LoadDefaultConfig(context.TODO(),
         awscfg.WithRegion(region),
         awscfg.WithRequestChecksumCalculation(aws.RequestChecksumCalculationWhenRequired),
+        awscfg.WithResponseChecksumValidation(aws.ResponseChecksumValidationWhenRequired),
         awscfg.WithEndpointResolverWithOptions(aws.EndpointResolverWithOptionsFunc(
             func(service, region string, options ...interface{}) (aws.Endpoint, error) {
                 return aws.Endpoint{
@@ -76,6 +77,8 @@ func New(cfg *config.Config) (*Client, error) {
 
 	// 创建S3客户端
     s3Client := s3.NewFromConfig(awsCfg, func(o *s3.Options) {
+        o.RequestChecksumCalculation = aws.RequestChecksumCalculationWhenRequired
+        o.ResponseChecksumValidation = aws.ResponseChecksumValidationWhenRequired
         // 对于阿里云OSS，需要设置此项
         if strings.Contains(endpointURL.Host, "aliyuncs.com") {
             o.UsePathStyle = true
