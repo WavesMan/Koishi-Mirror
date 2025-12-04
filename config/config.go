@@ -10,13 +10,17 @@ import (
 
 // Config 应用配置
 type Config struct {
-	// S3 配置
-	S3Endpoint  string
-	S3AccessKey string
-	S3SecretKey string
-	S3Region    string
-	S3Bucket    string
-	S3Prefix    string
+    // S3 配置
+    S3Endpoint  string
+    S3AccessKey string
+    S3SecretKey string
+    S3Region    string
+    S3Bucket    string
+    S3Prefix    string
+
+    // CDN 配置
+    CDNEndpoint string
+    CDNEnabled  bool
 
     // 同步配置
     DataSourceURL string
@@ -47,18 +51,19 @@ type Config struct {
 
 // LoadConfig 从环境变量加载配置
 func LoadConfig() *Config {
-	loadDotEnv()
-	concurrency, _ := strconv.Atoi(getEnv("SYNC_CONCURRENCY", "10"))
-	maxRetries, _ := strconv.Atoi(getEnv("SYNC_MAX_RETRIES", "3"))
-	syncInterval, _ := time.ParseDuration(getEnv("SYNC_INTERVAL", "1h"))
-	redisDB, _ := strconv.Atoi(getEnv("REDIS_DB", "0"))
-	cacheTTL, _ := time.ParseDuration(getEnv("CACHE_TTL", "10m"))
-	dsTimeout, _ := time.ParseDuration(getEnv("DATA_SOURCE_TIMEOUT", "15s"))
-	dsMaxRetries, _ := strconv.Atoi(getEnv("DATA_SOURCE_MAX_RETRIES", "3"))
-	logLevel := getEnv("LOG_LEVEL", "info")
-	if v := getEnv("LogLevel", ""); v != "" {
-		logLevel = v
-	}
+    loadDotEnv()
+    concurrency, _ := strconv.Atoi(getEnv("SYNC_CONCURRENCY", "10"))
+    maxRetries, _ := strconv.Atoi(getEnv("SYNC_MAX_RETRIES", "3"))
+    syncInterval, _ := time.ParseDuration(getEnv("SYNC_INTERVAL", "1h"))
+    redisDB, _ := strconv.Atoi(getEnv("REDIS_DB", "0"))
+    cacheTTL, _ := time.ParseDuration(getEnv("CACHE_TTL", "10m"))
+    dsTimeout, _ := time.ParseDuration(getEnv("DATA_SOURCE_TIMEOUT", "15s"))
+    dsMaxRetries, _ := strconv.Atoi(getEnv("DATA_SOURCE_MAX_RETRIES", "3"))
+    logLevel := getEnv("LOG_LEVEL", "info")
+    if v := getEnv("LogLevel", ""); v != "" {
+        logLevel = v
+    }
+    cdnEnabled := strings.EqualFold(getEnv("CDN_ENABLED", "false"), "true")
 
 	return &Config{
 		// S3 配置
@@ -66,8 +71,11 @@ func LoadConfig() *Config {
 		S3AccessKey: getEnv("S3_ACCESS_KEY", ""),
 		S3SecretKey: getEnv("S3_SECRET_KEY", ""),
 		S3Region:    getEnv("S3_REGION", "us-east-1"),
-		S3Bucket:    getEnv("S3_BUCKET", "waveyo-npm-mirror"),
-		S3Prefix:    getEnv("S3_PREFIX", "packages/"),
+        S3Bucket:    getEnv("S3_BUCKET", "waveyo-npm-mirror"),
+        S3Prefix:    getEnv("S3_PREFIX", "packages/"),
+
+        CDNEndpoint: getEnv("CDN_ENDPOINT", ""),
+        CDNEnabled:  cdnEnabled,
 
 		// 同步配置
 		DataSourceURL:        getEnv("DATA_SOURCE_URL", "https://ks-store.waveyo.cn/index.json"),

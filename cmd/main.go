@@ -64,6 +64,7 @@ func main() {
     logger := logging.New(cfg.LogLevel, store)
     syncManager.SetLogger(logger)
     ds.SetLogger(logger)
+    s3Client.SetLogger(logger)
     if store != nil { _ = store.PurgeLogsOlderThan(context.Background(), 30) }
 
 	// 初始化Gin路由

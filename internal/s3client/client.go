@@ -2,28 +2,33 @@ package s3client
 
 import (
     "context"
+    "errors"
     "fmt"
     "io"
     "net/url"
     "path"
-	"strings"
-	"time"
+    "strings"
+    "time"
 
-	"github.com/aws/aws-sdk-go-v2/aws"
-	awscfg "github.com/aws/aws-sdk-go-v2/config"
-	"github.com/aws/aws-sdk-go-v2/credentials"
-	"github.com/aws/aws-sdk-go-v2/service/s3"
-	"github.com/aws/aws-sdk-go-v2/service/s3/types"
-	"npm-mirror/config"
+    "github.com/aws/aws-sdk-go-v2/aws"
+    "github.com/aws/aws-sdk-go-v2/aws/middleware"
+    awscfg "github.com/aws/aws-sdk-go-v2/config"
+    "github.com/aws/aws-sdk-go-v2/credentials"
+    "github.com/aws/aws-sdk-go-v2/service/s3"
+    "github.com/aws/aws-sdk-go-v2/service/s3/types"
+    awshttp "github.com/aws/aws-sdk-go-v2/aws/transport/http"
+    "npm-mirror/config"
+    "npm-mirror/internal/logging"
 )
 
 // Client S3客户端
 type Client struct {
-	client        *s3.Client
-	presignClient *s3.PresignClient
-	bucket        string
-	prefix        string
-	config        *config.Config
+    client        *s3.Client
+    presignClient *s3.PresignClient
+    bucket        string
+    prefix        string
+    config        *config.Config
+    logger        *logging.Logger
 }
 
 // New 创建新的S3客户端
@@ -92,6 +97,15 @@ func New(cfg *config.Config) (*Client, error) {
     }, nil
 }
 
+func (c *Client) SetLogger(l *logging.Logger) { c.logger = l }
+
+func (c *Client) logMetadata(meta middleware.Metadata, op string, key string) {
+    if c.logger == nil { return }
+    rid, _ := middleware.GetRequestIDMetadata(meta)
+    hid, _ := s3.GetHostIDMetadata(meta)
+    c.logger.Info("s3", "request", map[string]interface{}{"op": op, "key": key, "request_id": rid, "host_id": hid})
+}
+
 // UploadFile 上传文件到S3
 func (c *Client) UploadFile(ctx context.Context, key string, reader io.Reader, contentType string, contentLength int64) error {
     // 确保key以prefix开头
@@ -110,9 +124,16 @@ func (c *Client) UploadFile(ctx context.Context, key string, reader io.Reader, c
     if contentLength < 0 { contentLength = 0 }
     in.ContentLength = aws.Int64(contentLength)
 
-    _, err := c.client.PutObject(ctx, in)
-
-    return err
+    out, err := c.client.PutObject(ctx, in)
+    if err != nil {
+        if c.logger != nil {
+            var re *awshttp.ResponseError
+            if errors.As(err, &re) { c.logger.Error("s3", "request", map[string]interface{}{"op": "PutObject", "key": key, "request_id": re.ServiceRequestID(), "error": re.Unwrap().Error()}) } else { c.logger.Error("s3", "request", map[string]interface{}{"op": "PutObject", "key": key, "error": err.Error()}) }
+        }
+        return err
+    }
+    c.logMetadata(out.ResultMetadata, "PutObject", key)
+    return nil
 }
 
 // DownloadFile 从S3下载文件
@@ -123,15 +144,20 @@ func (c *Client) DownloadFile(ctx context.Context, key string) (io.ReadCloser, e
     }
     key = strings.ReplaceAll(key, "\\", "/")
 
-	resp, err := c.client.GetObject(ctx, &s3.GetObjectInput{
-		Bucket: aws.String(c.bucket),
-		Key:    aws.String(key),
-	})
-	if err != nil {
-		return nil, err
-	}
+    resp, err := c.client.GetObject(ctx, &s3.GetObjectInput{
+        Bucket: aws.String(c.bucket),
+        Key:    aws.String(key),
+    })
+    if err != nil {
+        if c.logger != nil {
+            var re *awshttp.ResponseError
+            if errors.As(err, &re) { c.logger.Error("s3", "request", map[string]interface{}{"op": "GetObject", "key": key, "request_id": re.ServiceRequestID(), "error": re.Unwrap().Error()}) } else { c.logger.Error("s3", "request", map[string]interface{}{"op": "GetObject", "key": key, "error": err.Error()}) }
+        }
+        return nil, err
+    }
+    c.logMetadata(resp.ResultMetadata, "GetObject", key)
 
-	return resp.Body, nil
+    return resp.Body, nil
 }
 
 // GetFileInfo 获取文件信息
@@ -142,20 +168,25 @@ func (c *Client) GetFileInfo(ctx context.Context, key string) (*types.Object, er
     }
     key = strings.ReplaceAll(key, "\\", "/")
 
-	resp, err := c.client.HeadObject(ctx, &s3.HeadObjectInput{
-		Bucket: aws.String(c.bucket),
-		Key:    aws.String(key),
-	})
-	if err != nil {
-		return nil, err
-	}
+    resp, err := c.client.HeadObject(ctx, &s3.HeadObjectInput{
+        Bucket: aws.String(c.bucket),
+        Key:    aws.String(key),
+    })
+    if err != nil {
+        if c.logger != nil {
+            var re *awshttp.ResponseError
+            if errors.As(err, &re) { c.logger.Error("s3", "request", map[string]interface{}{"op": "HeadObject", "key": key, "request_id": re.ServiceRequestID(), "error": re.Unwrap().Error()}) } else { c.logger.Error("s3", "request", map[string]interface{}{"op": "HeadObject", "key": key, "error": err.Error()}) }
+        }
+        return nil, err
+    }
+    c.logMetadata(resp.ResultMetadata, "HeadObject", key)
 
-	return &types.Object{
-		Key:          aws.String(key),
-		Size:         resp.ContentLength,
-		LastModified: resp.LastModified,
-		ETag:         resp.ETag,
-	}, nil
+    return &types.Object{
+        Key:          aws.String(key),
+        Size:         resp.ContentLength,
+        LastModified: resp.LastModified,
+        ETag:         resp.ETag,
+    }, nil
 }
 
 // ListObjects 列出S3中的对象
@@ -171,17 +202,22 @@ func (c *Client) ListObjects(ctx context.Context, prefix string, delimiter strin
 	var continuationToken *string
 
 	for {
-		resp, err := c.client.ListObjectsV2(ctx, &s3.ListObjectsV2Input{
-			Bucket:            aws.String(c.bucket),
-			Prefix:            aws.String(fullPrefix),
-			Delimiter:         aws.String(delimiter),
-			ContinuationToken: continuationToken,
-		})
-		if err != nil {
-			return nil, err
-		}
+        resp, err := c.client.ListObjectsV2(ctx, &s3.ListObjectsV2Input{
+            Bucket:            aws.String(c.bucket),
+            Prefix:            aws.String(fullPrefix),
+            Delimiter:         aws.String(delimiter),
+            ContinuationToken: continuationToken,
+        })
+        if err != nil {
+            if c.logger != nil {
+                var re *awshttp.ResponseError
+                if errors.As(err, &re) { c.logger.Error("s3", "request", map[string]interface{}{"op": "ListObjectsV2", "key": fullPrefix, "request_id": re.ServiceRequestID(), "error": re.Unwrap().Error()}) } else { c.logger.Error("s3", "request", map[string]interface{}{"op": "ListObjectsV2", "key": fullPrefix, "error": err.Error()}) }
+            }
+            return nil, err
+        }
+        c.logMetadata(resp.ResultMetadata, "ListObjectsV2", fullPrefix)
 
-		objects = append(objects, resp.Contents...)
+        objects = append(objects, resp.Contents...)
 
     if !aws.ToBool(resp.IsTruncated) {
         break
@@ -201,12 +237,19 @@ func (c *Client) DeleteObject(ctx context.Context, key string) error {
     }
     key = strings.ReplaceAll(key, "\\", "/")
 
-	_, err := c.client.DeleteObject(ctx, &s3.DeleteObjectInput{
-		Bucket: aws.String(c.bucket),
-		Key:    aws.String(key),
-	})
-
-	return err
+    out, err := c.client.DeleteObject(ctx, &s3.DeleteObjectInput{
+        Bucket: aws.String(c.bucket),
+        Key:    aws.String(key),
+    })
+    if err != nil {
+        if c.logger != nil {
+            var re *awshttp.ResponseError
+            if errors.As(err, &re) { c.logger.Error("s3", "request", map[string]interface{}{"op": "DeleteObject", "key": key, "request_id": re.ServiceRequestID(), "error": re.Unwrap().Error()}) } else { c.logger.Error("s3", "request", map[string]interface{}{"op": "DeleteObject", "key": key, "error": err.Error()}) }
+        }
+        return err
+    }
+    c.logMetadata(out.ResultMetadata, "DeleteObject", key)
+    return nil
 }
 
 // GetPresignedURL 生成预签名下载链接
@@ -226,6 +269,18 @@ func (c *Client) GetPresignedURL(ctx context.Context, key string, lifetime time.
 		return "", err
 	}
 	return presignedReq.URL, nil
+}
+
+func (c *Client) BuildCDNURL(key string) string {
+    if !strings.HasPrefix(key, c.prefix) {
+        key = path.Join(c.prefix, key)
+    }
+    key = strings.ReplaceAll(key, "\\", "/")
+    ep := strings.TrimRight(c.config.CDNEndpoint, "/")
+    if ep == "" {
+        return ""
+    }
+    return ep + "/" + key
 }
 
 // GetPackageKey 获取包在S3中的key

@@ -1,8 +1,8 @@
 import { createRouter, createWebHistory } from 'vue-router'
-import Home from '../views/Home.vue'
-import PackageList from '../views/PackageList.vue'
-import PackageDetail from '../views/PackageDetail.vue'
-import StorageStats from '../views/StorageStats.vue'
+const Home = () => import('../views/Home.vue')
+const PackageList = () => import('../views/PackageList.vue')
+const PackageDetail = () => import('../views/PackageDetail.vue')
+const StorageStats = () => import('../views/StorageStats.vue')
 
 const routes = [
   {

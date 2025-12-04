@@ -447,17 +447,20 @@ func (h *Handler) DownloadPackage(c *gin.Context) {
 		return
 	}
 
-	// 获取预签名下载链接
-	s3Key := h.s3Client.GetPackageKey(name, version)
-	// 链接有效期 15 分钟
-	downloadURL, err := h.s3Client.GetPresignedURL(c.Request.Context(), s3Key, 15*time.Minute)
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "获取下载链接失败"})
-		return
-	}
-
-	// 302 重定向到 OSS
-	c.Redirect(http.StatusFound, downloadURL)
+    s3Key := h.s3Client.GetPackageKey(name, version)
+    if h.config.CDNEnabled && h.config.CDNEndpoint != "" {
+        u := h.s3Client.BuildCDNURL(s3Key)
+        if u != "" {
+            c.Redirect(http.StatusFound, u)
+            return
+        }
+    }
+    downloadURL, err := h.s3Client.GetPresignedURL(c.Request.Context(), s3Key, 15*time.Minute)
+    if err != nil {
+        c.JSON(http.StatusInternalServerError, gin.H{"error": "获取下载链接失败"})
+        return
+    }
+    c.Redirect(http.StatusFound, downloadURL)
 }
 
 func (h *Handler) GetIndex(c *gin.Context) {
