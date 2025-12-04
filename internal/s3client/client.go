@@ -53,6 +53,7 @@ func New(cfg *config.Config) (*Client, error) {
 
     awsCfg, err := awscfg.LoadDefaultConfig(context.TODO(),
         awscfg.WithRegion(region),
+        awscfg.WithRequestChecksumCalculation(aws.RequestChecksumCalculationWhenRequired),
         awscfg.WithEndpointResolverWithOptions(aws.EndpointResolverWithOptionsFunc(
             func(service, region string, options ...interface{}) (aws.Endpoint, error) {
                 return aws.Endpoint{
