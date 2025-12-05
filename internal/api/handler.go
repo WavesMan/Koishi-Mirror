@@ -717,14 +717,14 @@ func (h *Handler) DownloadPackage(c *gin.Context) {
 		}
 	}
 
-	// CDN URL添加端点头为存储桶名
+	// CDN URL
 	s3Key := h.s3Client.GetPackageKey(name, version)
 	if h.config.CDNEnabled && h.config.CDNEndpoint != "" {
-		// 修改处：手动拼接 URL，避免 BuildCDNURL 重复添加前缀
-		// 确保格式为: CDN端点/存储桶名/文件路径
+		// 直接拼接 CDN endpoint 和 S3 key
 		endpoint := strings.TrimRight(h.config.CDNEndpoint, "/")
-		u := fmt.Sprintf("%s/%s/%s", endpoint, s3Key)
-		c.Redirect(http.StatusFound, u)
+		// s3Key 已经包含完整路径（prefix + 包路径）
+		cdnURL := endpoint + "/" + s3Key
+		c.Redirect(http.StatusFound, cdnURL)
 		return
 	}
 	downloadURL, err := h.s3Client.GetPresignedURL(c.Request.Context(), s3Key, 15*time.Minute)
