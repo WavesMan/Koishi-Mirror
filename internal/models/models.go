@@ -75,6 +75,7 @@ type MirrorStatus struct {
     ICPUrl         string    `json:"icpUrl"`
     SecurityRecord string    `json:"securityRecord"`
     SecurityUrl    string    `json:"securityUrl"`
+    StatusBreakdown map[string]int `json:"statusBreakdown,omitempty"`
 }
 
 // PackageDetail 包详情

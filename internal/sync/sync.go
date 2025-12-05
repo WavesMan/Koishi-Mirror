@@ -578,7 +578,7 @@ func (sm *SyncManager) Reconcile(ctx context.Context) (*ReconcileSummary, error)
 			sum.Matched++
 		}
 	}
-	objs, err := sm.s3Client.ListObjects(ctx, "", "")
+    objs, err := sm.s3Client.ListObjects(ctx, "", "")
 	if err == nil {
 		for _, o := range objs {
 			k := *o.Key
@@ -616,8 +616,39 @@ func (sm *SyncManager) Reconcile(ctx context.Context) (*ReconcileSummary, error)
 				_ = sm.store.UpdateVersionStatus(ctx, name, version, "success", sz)
 			}
 		}
-	}
-	return sum, nil
+    }
+    if sm.store != nil && sm.ds != nil {
+        d, err := sm.ds.Get(ctx)
+        if err == nil {
+            for _, pkg := range d.Packages {
+                key := sm.s3Client.GetPackageKey(pkg.Name, pkg.Version)
+                info, err := sm.s3Client.GetFileInfo(ctx, key)
+                if err == nil {
+                    var sz int64
+                    if info.Size != nil {
+                        sz = *info.Size
+                    }
+                    pkg.Dist.Tarball = "/download/" + pkg.Version + "/" + url.PathEscape(pkg.Name)
+                    pkg.Dist.Size = sz
+                    pkg.SyncStatus = "success"
+                    pkg.SyncTime = time.Now()
+                    _ = sm.store.UpsertPackageVersion(ctx, pkg.Name, pkg.Description, pkg.Author, pkg)
+                    _ = sm.store.UpdateVersionStatus(ctx, pkg.Name, pkg.Version, "success", sz)
+                } else {
+                    ok, _ := sm.store.HasVersion(ctx, pkg.Name, pkg.Version)
+                    if !ok {
+                        pv := models.Package{Name: pkg.Name, Version: pkg.Version}
+                        pv.SyncStatus = "pending"
+                        pv.SyncTime = time.Now()
+                        _ = sm.store.UpsertPackageVersion(ctx, pkg.Name, pkg.Description, pkg.Author, pv)
+                    } else {
+                        _ = sm.store.UpdateVersionStatus(ctx, pkg.Name, pkg.Version, "failed", 0)
+                    }
+                }
+            }
+        }
+    }
+    return sum, nil
 }
 
 // updatePackageState 更新包状态

@@ -55,7 +55,8 @@ func (h *Handler) RegisterRoutes(r *gin.Engine) {
 		c.Next()
 	})
 	// 前端接口
-	r.GET("/api/status", h.GetMirrorStatus)
+    r.GET("/api/status", h.GetMirrorCOSStatus)
+    r.GET("/api/mirror-status", h.GetMirrorStatus)
 	r.GET("/api/packages", h.GetPackages)
 	// 详情使用独立前缀，避免与 /api/packages/:name/versions 路由冲突
 	r.GET("/api/package/*name", h.GetPackageDetail)
@@ -64,7 +65,8 @@ func (h *Handler) RegisterRoutes(r *gin.Engine) {
 	r.GET("/api/resolve", h.ResolveVersion)
 	r.GET("/api/stats", h.GetStorageStats)
 	r.POST("/api/sync", h.TriggerSync)
-	r.POST("/api/reconcile", h.Reconcile)
+    r.POST("/api/reconcile", h.Reconcile)
+    r.POST("/api/boot-sync", h.BootSync)
 	r.POST("/api/retry-failed", h.RetryFailed)
 	r.POST("/api/log-test", h.LogTest)
 	r.GET("/api/index", h.GetIndex)
@@ -136,47 +138,147 @@ func (h *Handler) ResolveVersion(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"name": name, "version": v})
 }
 
-// GetMirrorStatus 获取镜像状态
+// GetMirrorCOSStatus 获取镜像状态
+// GetMirrorStatus 获取完整镜像状态（含配置项）
 func (h *Handler) GetMirrorStatus(c *gin.Context) {
-	syncState := h.syncManager.GetSyncState()
-	total := syncState.TotalPackages
-	if h.ds != nil {
-		if d, err := h.ds.Get(c.Request.Context()); err == nil {
-			if d.Total > 0 {
-				total = d.Total
-			}
-		}
-	}
+    syncState := h.syncManager.GetSyncState()
+    total := syncState.TotalPackages
+    if h.ds != nil {
+        if d, err := h.ds.Get(c.Request.Context()); err == nil {
+            if d.Total > 0 {
+                total = d.Total
+            }
+        }
+    }
 
-	storageSize := int64(0)
-	synced := 0
-	failed := 0
-	for _, state := range syncState.PackageStates {
-		if state.SyncStatus == "success" {
-			synced++
-			storageSize += state.Size
-		} else if state.SyncStatus == "failed" {
-			failed++
-		}
-	}
+    var storageSize int64
+    synced := 0
+    failed := 0
+    lastSync := syncState.LastSyncTime
+    if h.store != nil {
+        if m, err := h.store.StatusCounts(c.Request.Context()); err == nil {
+            if v, ok := m["success"]; ok {
+                synced = v
+            }
+            if v, ok := m["failed"]; ok {
+                failed = v
+            }
+        }
+        if sz, err := h.store.TotalSuccessSize(c.Request.Context()); err == nil {
+            storageSize = sz
+        }
+        if t, err := h.store.LatestSyncTime(c.Request.Context()); err == nil {
+            lastSync = t
+        }
+    } else {
+        for _, state := range syncState.PackageStates {
+            if state.SyncStatus == "success" {
+                synced++
+                storageSize += state.Size
+            } else if state.SyncStatus == "failed" {
+                failed++
+            }
+        }
+    }
 
-	status := models.MirrorStatus{
-		LastSyncTime:   syncState.LastSyncTime,
-		TotalPackages:  total,
-		SyncedPackages: synced,
-		FailedPackages: failed,
-		StorageSize:    storageSize,
-		S3Bucket:       h.config.TENCENT_COSBucket,
-		DataSourceURL:  h.config.DataSourceURL,
-	}
+    status := models.MirrorStatus{
+        LastSyncTime:   lastSync,
+        TotalPackages:  total,
+        SyncedPackages: synced,
+        FailedPackages: failed,
+        StorageSize:    storageSize,
+        S3Bucket:       h.config.TENCENT_COSBucket,
+        DataSourceURL:  h.config.DataSourceURL,
+    }
+    // 追加状态分布
+    breakdown := map[string]int{"success": synced, "failed": failed}
+    if h.store != nil {
+        if m, err := h.store.StatusCounts(c.Request.Context()); err == nil {
+            breakdown = m
+        }
+    } else {
+        pending := 0
+        syncing := 0
+        for _, state := range syncState.PackageStates {
+            switch state.SyncStatus {
+            case "pending":
+                pending++
+            case "syncing":
+                syncing++
+            }
+        }
+        breakdown["pending"] = pending
+        breakdown["syncing"] = syncing
+    }
+    status.StatusBreakdown = breakdown
 
-	status.ICPEnabled = h.config.ICPEnabled
-	status.ICPRecord = h.config.ICPRecord
-	status.ICPUrl = h.config.ICPUrl
-	status.SecurityRecord = h.config.SecurityRecord
-	status.SecurityUrl = h.config.SecurityUrl
+    status.ICPEnabled = h.config.ICPEnabled
+    status.ICPRecord = h.config.ICPRecord
+    status.ICPUrl = h.config.ICPUrl
+    status.SecurityRecord = h.config.SecurityRecord
+    status.SecurityUrl = h.config.SecurityUrl
 
-	c.JSON(http.StatusOK, status)
+    c.JSON(http.StatusOK, status)
+}
+
+// GetMirrorCOSStatus 获取基本镜像状态（不含配置项）
+func (h *Handler) GetMirrorCOSStatus(c *gin.Context) {
+    syncState := h.syncManager.GetSyncState()
+    total := syncState.TotalPackages
+    if h.ds != nil {
+        if d, err := h.ds.Get(c.Request.Context()); err == nil {
+            if d.Total > 0 {
+                total = d.Total
+            }
+        }
+    }
+
+    var storageSize int64
+    synced := 0
+    failed := 0
+    lastSync := syncState.LastSyncTime
+    if h.store != nil {
+        if m, err := h.store.StatusCounts(c.Request.Context()); err == nil {
+            if v, ok := m["success"]; ok {
+                synced = v
+            }
+            if v, ok := m["failed"]; ok {
+                failed = v
+            }
+        }
+        if sz, err := h.store.TotalSuccessSize(c.Request.Context()); err == nil {
+            storageSize = sz
+        }
+        if t, err := h.store.LatestSyncTime(c.Request.Context()); err == nil {
+            lastSync = t
+        }
+    } else {
+        for _, state := range syncState.PackageStates {
+            if state.SyncStatus == "success" {
+                synced++
+                storageSize += state.Size
+            } else if state.SyncStatus == "failed" {
+                failed++
+            }
+        }
+    }
+
+    c.JSON(http.StatusOK, gin.H{
+        "totalPackages":  total,
+        "syncedPackages": synced,
+        "failedPackages": failed,
+        "storageSize":    storageSize,
+        "lastSyncTime":   lastSync,
+        "dataSourceURL":  h.config.DataSourceURL,
+    })
+}
+
+func (h *Handler) BootSync(c *gin.Context) {
+    go func() {
+        ctx := context.Background()
+        _ = h.syncManager.BootSync(ctx)
+    }()
+    c.JSON(http.StatusOK, gin.H{"message": "已触发初始化同步"})
 }
 
 // GetPackages 获取包列表

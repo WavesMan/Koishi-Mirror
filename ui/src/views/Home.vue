@@ -63,6 +63,20 @@
           <a :href="status.dataSourceURL" target="_blank" class="meta-link">{{ status.dataSourceURL || 'Unknown' }}</a>
         </span>
       </div>
+      <div class="status-breakdown">
+        <div class="badge pending">
+          待同步: {{ (status.statusBreakdown && status.statusBreakdown.pending) || 0 }}
+        </div>
+        <div class="badge syncing">
+          同步中: {{ (status.statusBreakdown && status.statusBreakdown.syncing) || 0 }}
+        </div>
+        <div class="badge success">
+          已同步: {{ (status.statusBreakdown && status.statusBreakdown.success) || status.syncedPackages || 0 }}
+        </div>
+        <div class="badge failed">
+          失败: {{ (status.statusBreakdown && status.statusBreakdown.failed) || status.failedPackages || 0 }}
+        </div>
+      </div>
     </section>
 
     <!-- Usage Guide -->
@@ -112,7 +126,7 @@ export default {
     // 获取镜像状态
     const fetchStatus = async () => {
       try {
-        const res = await axios.get('/status')
+        const res = await axios.get('/mirror-status')
         status.value = res.data
       } catch (err) {
         status.value = {
@@ -323,6 +337,23 @@ export default {
   text-decoration: underline;
   text-underline-offset: 2px;
 }
+
+.status-breakdown {
+  display: flex;
+  justify-content: center;
+  gap: 0.75rem;
+  margin-top: 1rem;
+}
+.badge {
+  padding: 0.25rem 0.5rem;
+  border-radius: 999px;
+  font-size: 0.85rem;
+  border: 1px solid var(--border-color);
+}
+.badge.pending { background: #fff7ed; color: #f59e0b; }
+.badge.syncing { background: #f0fdfa; color: #14b8a6; }
+.badge.success { background: #f0fdf4; color: #10b981; }
+.badge.failed  { background: #fef2f2; color: #ef4444; }
 
 /* Guide Section */
 .section-title {

@@ -170,6 +170,12 @@ func (s *Store) StatusCounts(ctx context.Context) (map[string]int, error) {
     return m, nil
 }
 
+func (s *Store) TotalSuccessSize(ctx context.Context) (int64, error) {
+    var n int64
+    err := s.pool.QueryRow(ctx, `SELECT COALESCE(SUM(size),0) FROM package_versions WHERE sync_status='success'`).Scan(&n)
+    return n, err
+}
+
 func (s *Store) LatestSyncTime(ctx context.Context) (time.Time, error) {
     var t time.Time
     err := s.pool.QueryRow(ctx, `SELECT COALESCE(MAX(sync_time), NOW()) FROM package_versions`).Scan(&t)
