@@ -162,7 +162,7 @@ func (sm *SyncManager) BootSync(ctx context.Context) error {
     // 4. 生成同步计划：S3不存在的版本需要同步
     var toSync []models.Package
     for _, pkg := range data.Packages {
-        key := pkg.Name + "@" + pkg.Version
+        key := s3client.NormalizePackageName(pkg.Name) + "@" + pkg.Version
         if _, ok := s3idx[key]; !ok {
             toSync = append(toSync, pkg)
         }
@@ -452,7 +452,7 @@ func (sm *SyncManager) Reconcile(ctx context.Context) (*ReconcileSummary, error)
                 if sm.logger != nil { sm.logger.Debug("s3", "db_insert_missing", map[string]interface{}{"name": name, "version": version}) }
                 sum.S3MissingDB = append(sum.S3MissingDB, name+"@"+version)
                 pv := models.Package{Name: name, Version: version}
-                pv.Dist.Tarball = "/download/"+name+"/"+version
+                pv.Dist.Tarball = "/download/"+version+"/"+url.PathEscape(name)
                 if o.Size != nil { pv.Dist.Size = *o.Size }
                 pv.SyncStatus = "success"
                 pv.SyncTime = time.Now()

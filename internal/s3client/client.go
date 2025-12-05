@@ -316,9 +316,17 @@ func (c *Client) BuildCDNURL(key string) string {
     return ep + "/" + key
 }
 
+// NormalizePackageName 将 npm 包名规范化为适合 S3 路径的形式（移除 @scope 并用 - 代替 /）
+func NormalizePackageName(packageName string) string {
+    n := strings.TrimPrefix(packageName, "@")
+    n = strings.ReplaceAll(n, "/", "-")
+    return n
+}
+
 // GetPackageKey 获取包在S3中的key
 func (c *Client) GetPackageKey(packageName, version string) string {
-    return strings.ReplaceAll(path.Join(c.prefix, packageName, version, fmt.Sprintf("%s-%s.tgz", packageName, version)), "\\", "/")
+    base := NormalizePackageName(packageName)
+    return strings.ReplaceAll(path.Join(c.prefix, base, version, fmt.Sprintf("%s-%s.tgz", base, version)), "\\", "/")
 }
 
 // GetPackageMetaKey 获取包元数据在S3中的key

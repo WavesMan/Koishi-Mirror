@@ -75,7 +75,7 @@
           
           <div class="pkg-footer">
             <a
-              :href="`/download/${pkg.name}/${pkg.version}`"
+              :href="`/download/${pkg.version}/${encodeURIComponent(pkg.name)}`"
               class="btn btn-sm btn-outline"
               target="_blank"
               :class="{ disabled: pkg.syncStatus !== 'success' }"
@@ -177,7 +177,7 @@ export default {
           search: searchKey.value
         }
         
-        const res = await axios.get('/packages', { params })
+        const res = await axios.get('/api/packages', { params })
         packages.value = res.data.packages || []
         total.value = res.data.total || 0
       } catch (err) {
