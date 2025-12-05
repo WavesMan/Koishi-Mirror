@@ -291,16 +291,12 @@ check_dependencies() {
     if command -v pnpm &> /dev/null; then
       PACKAGE_MANAGER="pnpm"
       log_info "使用 pnpm 作为包管理器"
-    # 检查 yarn
-    elif command -v yarn &> /dev/null; then
-      PACKAGE_MANAGER="yarn"
-      log_info "使用 yarn 作为包管理器"
     # 默认使用 npm
     elif command -v npm &> /dev/null; then
       PACKAGE_MANAGER="npm"
       log_info "使用 npm 作为包管理器"
     else
-      log_error "未找到包管理器 (npm/yarn/pnpm)"
+      log_error "未找到包管理器 (npm/pnpm)"
       if [[ "$INSTALL_DEPS" == true ]]; then
         install_dependencies
       else
@@ -348,9 +344,6 @@ get_bin_paths() {
   case "$PACKAGE_MANAGER" in
     pnpm)
       PM_BIN="${PM_BIN:-$(command -v pnpm || true)}"
-      ;;
-    yarn)
-      PM_BIN="${PM_BIN:-$(command -v yarn || true)}"
       ;;
     *)
       PM_BIN="${PM_BIN:-$(command -v npm || true)}"
@@ -405,6 +398,9 @@ strict-peer-dependencies=false
 prefer-frozen-lockfile=true
 auto-install-peers=true
 
+# 清理缓存
+pnpm cache clean
+
 # 缓存配置
 store-dir=.pnpm-store
 
@@ -454,15 +450,6 @@ build_frontend() {
       fi
       pnpm run build --silent
       ;;
-    # yarn)
-    #   log_info "使用 yarn 构建..."
-    #   if [[ -f "yarn.lock" ]]; then
-    #     yarn install --frozen-lockfile --silent
-    #   else
-    #     yarn install --silent
-    #   fi
-    #   yarn build --silent
-    #   ;;
     npm)
       log_info "使用 npm 构建..."
       if [[ -f "package-lock.json" ]]; then
@@ -470,7 +457,8 @@ build_frontend() {
       else
         npm install --silent
       fi
-      npm run build --silent
+      # 先清理缓存
+      rm -rf node_modules && npm run build --silent
       ;;
   esac
   
