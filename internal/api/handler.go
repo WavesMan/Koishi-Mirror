@@ -13,6 +13,7 @@ import (
 	"npm-mirror/config"
 	"npm-mirror/internal/datasource"
 	"npm-mirror/internal/models"
+	"npm-mirror/internal/proxy"
 	"npm-mirror/internal/s3client"
 	pgstore "npm-mirror/internal/storage/postgres"
 	"npm-mirror/internal/sync"
@@ -27,6 +28,7 @@ type Handler struct {
 	vc          *version.Controller
 	ds          *datasource.Source
 	store       *pgstore.Store
+	upstream    *proxy.UpstreamProxy
 }
 
 // NewHandler 创建新的API处理器
@@ -38,6 +40,7 @@ func NewHandler(cfg *config.Config, s3Client *s3client.Client, syncManager *sync
 		vc:          version.NewController(cfg, s3Client, syncManager, store),
 		ds:          ds,
 		store:       store,
+		upstream:    proxy.NewUpstreamProxy(""),
 	}
 }
 
@@ -704,7 +707,17 @@ func (h *Handler) GetPackageMeta(c *gin.Context) {
 
 	md, err := h.vc.BuildPackageMetadata(c.Request.Context(), raw)
 	if err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"error": "包不存在"})
+		// 透传代理到上游 npm registry
+		resp, e := h.upstream.ProxyMetadata(raw)
+		if e != nil {
+			c.JSON(http.StatusBadGateway, gin.H{"error": "上游服务不可用"})
+			return
+		}
+		defer resp.Body.Close()
+
+		if err := proxy.StreamResponse(resp, c.Writer); err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "代理响应失败"})
+		}
 		return
 	}
 
@@ -770,7 +783,23 @@ func (h *Handler) DownloadPackage(c *gin.Context) {
 		pkgKey := fmt.Sprintf("%s@%s", name, version)
 		state, exists := syncState.PackageStates[pkgKey]
 		if !exists || state.SyncStatus != "success" {
-			c.JSON(http.StatusNotFound, gin.H{"error": "包不存在或未同步完成"})
+			// 透传代理上游 tarball（未镜像时）
+			tarballURL, err := h.upstream.GetTarballURL(name, version)
+			if err != nil {
+				c.JSON(http.StatusNotFound, gin.H{"error": "包不存在或未同步完成"})
+				return
+			}
+
+			resp, err := h.upstream.ProxyTarball(tarballURL)
+			if err != nil {
+				c.JSON(http.StatusBadGateway, gin.H{"error": "上游服务不可用"})
+				return
+			}
+			defer resp.Body.Close()
+
+			if err := proxy.StreamResponse(resp, c.Writer); err != nil {
+				c.JSON(http.StatusInternalServerError, gin.H{"error": "代理响应失败"})
+			}
 			return
 		}
 	}
@@ -908,9 +937,17 @@ func (h *Handler) RegistryFallback(c *gin.Context) {
 
 	md, err := h.vc.BuildPackageMetadata(c.Request.Context(), raw)
 	if err != nil {
-		// 如果本地没有，代理到上游 npm registry
-		upstreamURL := fmt.Sprintf("https://registry.npmjs.org/%s", url.PathEscape(raw))
-		c.Redirect(http.StatusMovedPermanently, upstreamURL)
+		// 透传代理到上游 npm registry
+		resp, e := h.upstream.ProxyMetadata(raw)
+		if e != nil {
+			c.JSON(http.StatusBadGateway, gin.H{"error": "上游服务不可用"})
+			return
+		}
+		defer resp.Body.Close()
+
+		if err := proxy.StreamResponse(resp, c.Writer); err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "代理响应失败"})
+		}
 		return
 	}
 
