@@ -177,7 +177,7 @@ export default {
           search: searchKey.value
         }
         
-        const res = await axios.get('/api/packages', { params })
+        const res = await axios.get('/packages', { params })
         packages.value = res.data.packages || []
         total.value = res.data.total || 0
       } catch (err) {
