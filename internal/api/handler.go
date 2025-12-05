@@ -9,172 +9,174 @@ import (
 	"strings"
 	"time"
 
-    "github.com/gin-gonic/gin"
-    "npm-mirror/config"
-    "npm-mirror/internal/models"
-    "npm-mirror/internal/s3client"
-    "npm-mirror/internal/sync"
-    "npm-mirror/internal/version"
-    pgstore "npm-mirror/internal/storage/postgres"
-    "npm-mirror/internal/datasource"
+	"github.com/gin-gonic/gin"
+	"npm-mirror/config"
+	"npm-mirror/internal/datasource"
+	"npm-mirror/internal/models"
+	"npm-mirror/internal/s3client"
+	pgstore "npm-mirror/internal/storage/postgres"
+	"npm-mirror/internal/sync"
+	"npm-mirror/internal/version"
 )
 
 // Handler API处理器
 type Handler struct {
-    config      *config.Config
-    s3Client    *s3client.Client
-    syncManager *sync.SyncManager
-    vc          *version.Controller
-    ds          *datasource.Source
-    store       *pgstore.Store
+	config      *config.Config
+	s3Client    *s3client.Client
+	syncManager *sync.SyncManager
+	vc          *version.Controller
+	ds          *datasource.Source
+	store       *pgstore.Store
 }
 
 // NewHandler 创建新的API处理器
 func NewHandler(cfg *config.Config, s3Client *s3client.Client, syncManager *sync.SyncManager, store *pgstore.Store, ds *datasource.Source) *Handler {
-    return &Handler{
-        config:      cfg,
-        s3Client:    s3Client,
-        syncManager: syncManager,
-        vc:          version.NewController(cfg, s3Client, syncManager, store),
-        ds:          ds,
-        store:       store,
-    }
+	return &Handler{
+		config:      cfg,
+		s3Client:    s3Client,
+		syncManager: syncManager,
+		vc:          version.NewController(cfg, s3Client, syncManager, store),
+		ds:          ds,
+		store:       store,
+	}
 }
 
 // RegisterRoutes 注册路由
 func (h *Handler) RegisterRoutes(r *gin.Engine) {
-    r.Use(func(c *gin.Context) {
-        p := c.Request.URL.Path
-        if c.Request.Method == "GET" {
-            if strings.HasPrefix(p, "/assets/") {
-                c.Writer.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
-            } else if p == "/" || strings.HasSuffix(p, "index.html") {
-                c.Writer.Header().Set("Cache-Control", "no-cache")
-            }
-        }
-        c.Next()
-    })
-    // 前端接口
-    r.GET("/api/status", h.GetMirrorStatus)
-    r.GET("/api/packages", h.GetPackages)
-    // 详情使用独立前缀，避免与 /api/packages/:name/versions 路由冲突
-    r.GET("/api/package/*name", h.GetPackageDetail)
-    r.GET("/api/packages/:name/versions", h.GetPackageVersions)
-    r.GET("/api/packages/:name/dist-tags", h.GetPackageDistTags)
-    r.GET("/api/resolve", h.ResolveVersion)
-    r.GET("/api/stats", h.GetStorageStats)
-    r.POST("/api/sync", h.TriggerSync)
-    r.POST("/api/reconcile", h.Reconcile)
-    r.POST("/api/retry-failed", h.RetryFailed)
-    r.POST("/api/log-test", h.LogTest)
-    r.GET("/api/index", h.GetIndex)
-    r.GET("/api/registry", h.GetRegistry)
-    r.GET("/-/v1/search", h.SearchV1)
-    r.POST("/-/npm/v1/security/advisories/bulk", h.AdvisoriesBulk)
+	r.Use(func(c *gin.Context) {
+		p := c.Request.URL.Path
+		if c.Request.Method == "GET" {
+			if strings.HasPrefix(p, "/assets/") {
+				c.Writer.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
+			} else if p == "/" || strings.HasSuffix(p, "index.html") {
+				c.Writer.Header().Set("Cache-Control", "no-cache")
+			}
+		}
+		c.Next()
+	})
+	// 前端接口
+	r.GET("/api/status", h.GetMirrorStatus)
+	r.GET("/api/packages", h.GetPackages)
+	// 详情使用独立前缀，避免与 /api/packages/:name/versions 路由冲突
+	r.GET("/api/package/*name", h.GetPackageDetail)
+	r.GET("/api/packages/:name/versions", h.GetPackageVersions)
+	r.GET("/api/packages/:name/dist-tags", h.GetPackageDistTags)
+	r.GET("/api/resolve", h.ResolveVersion)
+	r.GET("/api/stats", h.GetStorageStats)
+	r.POST("/api/sync", h.TriggerSync)
+	r.POST("/api/reconcile", h.Reconcile)
+	r.POST("/api/retry-failed", h.RetryFailed)
+	r.POST("/api/log-test", h.LogTest)
+	r.GET("/api/index", h.GetIndex)
+	r.GET("/api/registry", h.GetRegistry)
+	r.GET("/-/v1/search", h.SearchV1)
+	r.POST("/-/npm/v1/security/advisories/bulk", h.AdvisoriesBulk)
 
-    // 静态资源
-    r.Static("/assets", "./ui/dist/assets")
-    r.StaticFile("/favicon.ico", "./ui/dist/favicon.ico")
-    r.StaticFile("/koishi.png", "./ui/dist/koishi.png")
+	// 静态资源
+	r.Static("/assets", "./ui/dist/assets")
+	r.StaticFile("/favicon.ico", "./ui/dist/favicon.ico")
+	r.StaticFile("/koishi.png", "./ui/dist/koishi.png")
 
-    // npm客户端兼容接口：使用 NoRoute 作为回退以避免与 /api 路由冲突
-    r.NoRoute(h.RegistryFallback)
-    r.GET("/download/:version/*name", h.DownloadPackage)
-    r.GET("/index.json", h.GetIndex)
+	// npm客户端兼容接口：使用 NoRoute 作为回退以避免与 /api 路由冲突
+	r.NoRoute(h.RegistryFallback)
+	r.GET("/download/:version/*name", h.DownloadPackage)
+	r.GET("/index.json", h.GetIndex)
 }
 
 func (h *Handler) LogTest(c *gin.Context) {
-    if h.store == nil {
-        c.JSON(http.StatusInternalServerError, gin.H{"error": "store not configured"})
-        return
-    }
-    fields := map[string]interface{}{"ok": true, "time": time.Now().Format(time.RFC3339)}
-    if err := h.store.InsertLog(c.Request.Context(), "info", "health", "db_log_test", fields); err != nil {
-        c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
-        return
-    }
-    c.JSON(http.StatusOK, gin.H{"message": "ok"})
+	if h.store == nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "store not configured"})
+		return
+	}
+	fields := map[string]interface{}{"ok": true, "time": time.Now().Format(time.RFC3339)}
+	if err := h.store.InsertLog(c.Request.Context(), "info", "health", "db_log_test", fields); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"message": "ok"})
 }
 
 func (h *Handler) Reconcile(c *gin.Context) {
-    sum, err := h.syncManager.Reconcile(c.Request.Context())
-    if err != nil {
-        c.JSON(500, gin.H{"error": err.Error()})
-        return
-    }
-    c.JSON(200, sum)
+	sum, err := h.syncManager.Reconcile(c.Request.Context())
+	if err != nil {
+		c.JSON(500, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(200, sum)
 }
 
 func (h *Handler) GetPackageVersions(c *gin.Context) {
-    name := c.Param("name")
-    md, err := h.vc.BuildPackageMetadata(c.Request.Context(), name)
-    if err != nil {
-        c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
-        return
-    }
-    c.JSON(http.StatusOK, gin.H{"name": name, "versions": md.Versions})
+	name := c.Param("name")
+	md, err := h.vc.BuildPackageMetadata(c.Request.Context(), name)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"name": name, "versions": md.Versions})
 }
 
 func (h *Handler) GetPackageDistTags(c *gin.Context) {
-    name := c.Param("name")
-    md, err := h.vc.BuildPackageMetadata(c.Request.Context(), name)
-    if err != nil {
-        c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
-        return
-    }
-    c.JSON(http.StatusOK, gin.H{"name": name, "distTags": md.DistTags})
+	name := c.Param("name")
+	md, err := h.vc.BuildPackageMetadata(c.Request.Context(), name)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"name": name, "distTags": md.DistTags})
 }
 
 func (h *Handler) ResolveVersion(c *gin.Context) {
-    name := c.Query("name")
-    rng := c.Query("range")
-    v, err := h.vc.ResolveVersion(c.Request.Context(), name, rng)
-    if err != nil {
-        c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-        return
-    }
-    c.JSON(http.StatusOK, gin.H{"name": name, "version": v})
+	name := c.Query("name")
+	rng := c.Query("range")
+	v, err := h.vc.ResolveVersion(c.Request.Context(), name, rng)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"name": name, "version": v})
 }
 
 // GetMirrorStatus 获取镜像状态
 func (h *Handler) GetMirrorStatus(c *gin.Context) {
-    syncState := h.syncManager.GetSyncState()
-    total := syncState.TotalPackages
-    if h.ds != nil {
-        if d, err := h.ds.Get(c.Request.Context()); err == nil {
-            if d.Total > 0 { total = d.Total }
-        }
-    }
+	syncState := h.syncManager.GetSyncState()
+	total := syncState.TotalPackages
+	if h.ds != nil {
+		if d, err := h.ds.Get(c.Request.Context()); err == nil {
+			if d.Total > 0 {
+				total = d.Total
+			}
+		}
+	}
 
-    storageSize := int64(0)
-    synced := 0
-    failed := 0
-    for _, state := range syncState.PackageStates {
-        if state.SyncStatus == "success" {
-            synced++
-            storageSize += state.Size
-        } else if state.SyncStatus == "failed" {
-            failed++
-        }
-    }
+	storageSize := int64(0)
+	synced := 0
+	failed := 0
+	for _, state := range syncState.PackageStates {
+		if state.SyncStatus == "success" {
+			synced++
+			storageSize += state.Size
+		} else if state.SyncStatus == "failed" {
+			failed++
+		}
+	}
 
-    status := models.MirrorStatus{
-        LastSyncTime:   syncState.LastSyncTime,
-        TotalPackages:  total,
-        SyncedPackages: synced,
-        FailedPackages: failed,
-        StorageSize:    storageSize,
-        S3Bucket:       h.config.S3Bucket,
-        DataSourceURL:  h.config.DataSourceURL,
-    }
+	status := models.MirrorStatus{
+		LastSyncTime:   syncState.LastSyncTime,
+		TotalPackages:  total,
+		SyncedPackages: synced,
+		FailedPackages: failed,
+		StorageSize:    storageSize,
+		S3Bucket:       h.config.S3Bucket,
+		DataSourceURL:  h.config.DataSourceURL,
+	}
 
-    status.ICPEnabled = h.config.ICPEnabled
-    status.ICPRecord = h.config.ICPRecord
-    status.ICPUrl = h.config.ICPUrl
-    status.SecurityRecord = h.config.SecurityRecord
-    status.SecurityUrl = h.config.SecurityUrl
+	status.ICPEnabled = h.config.ICPEnabled
+	status.ICPRecord = h.config.ICPRecord
+	status.ICPUrl = h.config.ICPUrl
+	status.SecurityRecord = h.config.SecurityRecord
+	status.SecurityUrl = h.config.SecurityUrl
 
-    c.JSON(http.StatusOK, status)
+	c.JSON(http.StatusOK, status)
 }
 
 // GetPackages 获取包列表
@@ -192,12 +194,12 @@ func (h *Handler) GetPackages(c *gin.Context) {
 		pageSize = 50
 	}
 
-    // 拉取数据源
-    data, err := h.ds.Get(c.Request.Context())
-    if err != nil {
-        c.JSON(500, gin.H{"error": "拉取数据源失败"})
-        return
-    }
+	// 拉取数据源
+	data, err := h.ds.Get(c.Request.Context())
+	if err != nil {
+		c.JSON(500, gin.H{"error": "拉取数据源失败"})
+		return
+	}
 
 	// 搜索过滤
 	packages := data.Packages
@@ -257,43 +259,47 @@ func (h *Handler) GetPackages(c *gin.Context) {
 
 // GetPackageDetail 获取包详情
 func (h *Handler) GetPackageDetail(c *gin.Context) {
-    name := c.Param("name")
-    // 当路由使用 *name 捕获时，值可能以 / 开头，并可能包含编码
-    if strings.HasPrefix(name, "/") { name = name[1:] }
-    if u, err := url.PathUnescape(name); err == nil { name = u }
-    name = strings.ReplaceAll(name, "%2F", "/")
-    name = strings.ReplaceAll(name, "%2f", "/")
+	name := c.Param("name")
+	// 当路由使用 *name 捕获时，值可能以 / 开头，并可能包含编码
+	if strings.HasPrefix(name, "/") {
+		name = name[1:]
+	}
+	if u, err := url.PathUnescape(name); err == nil {
+		name = u
+	}
+	name = strings.ReplaceAll(name, "%2F", "/")
+	name = strings.ReplaceAll(name, "%2f", "/")
 
 	// 拉取数据源
-    data, err := h.ds.Get(c.Request.Context())
-    if err != nil {
-        c.JSON(500, gin.H{"error": "拉取数据源失败"})
-        return
-    }
+	data, err := h.ds.Get(c.Request.Context())
+	if err != nil {
+		c.JSON(500, gin.H{"error": "拉取数据源失败"})
+		return
+	}
 
 	// 查找包
 	var versions []struct {
-		Version     string    `json:"version"`
-		Dist        struct {
+		Version string `json:"version"`
+		Dist    struct {
 			Tarball string `json:"tarball"`
 			Size    int64  `json:"size,omitempty"`
 			Shasum  string `json:"shasum,omitempty"`
 		} `json:"dist"`
-		SyncStatus  string    `json:"syncStatus"`
-		SyncTime    time.Time `json:"syncTime,omitempty"`
+		SyncStatus string    `json:"syncStatus"`
+		SyncTime   time.Time `json:"syncTime,omitempty"`
 	}
 
 	var detail models.PackageDetail
 	found := false
 
-    for _, pkg := range data.Packages {
-        if pkg.Name == name {
-            if !found {
-                detail.Name = pkg.Name
-                detail.Description = pkg.Description
-                detail.Author = pkg.Author
-                found = true
-            }
+	for _, pkg := range data.Packages {
+		if pkg.Name == name {
+			if !found {
+				detail.Name = pkg.Name
+				detail.Description = pkg.Description
+				detail.Author = pkg.Author
+				found = true
+			}
 
 			// 获取同步状态
 			pkgKey := fmt.Sprintf("%s@%s", pkg.Name, pkg.Version)
@@ -311,20 +317,20 @@ func (h *Handler) GetPackageDetail(c *gin.Context) {
 
 			// 添加版本信息
 			version := struct {
-				Version     string    `json:"version"`
-				Dist        struct {
+				Version string `json:"version"`
+				Dist    struct {
 					Tarball string `json:"tarball"`
 					Size    int64  `json:"size,omitempty"`
 					Shasum  string `json:"shasum,omitempty"`
 				} `json:"dist"`
-				SyncStatus  string    `json:"syncStatus"`
-				SyncTime    time.Time `json:"syncTime,omitempty"`
+				SyncStatus string    `json:"syncStatus"`
+				SyncTime   time.Time `json:"syncTime,omitempty"`
 			}{
 				Version:    pkg.Version,
 				SyncStatus: syncStatus,
 				SyncTime:   syncTime,
 			}
-            version.Dist.Tarball = fmt.Sprintf("/download/%s/%s", pkg.Version, url.PathEscape(pkg.Name))
+			version.Dist.Tarball = fmt.Sprintf("/download/%s/%s", pkg.Version, url.PathEscape(pkg.Name))
 			version.Dist.Size = pkg.Dist.Size
 			version.Dist.Shasum = pkg.Dist.Shasum
 
@@ -347,10 +353,10 @@ func (h *Handler) GetStorageStats(c *gin.Context) {
 
 	// 计算存储统计
 	stats := models.StorageStats{
-		TotalSize:     0,
-		PackageCount:  0,
-		VersionCount:  len(syncState.PackageStates),
-		PackageStats:  make(map[string]models.PackageStat),
+		TotalSize:    0,
+		PackageCount: 0,
+		VersionCount: len(syncState.PackageStates),
+		PackageStats: make(map[string]models.PackageStat),
 	}
 
 	// 按包名分组统计
@@ -413,62 +419,74 @@ func (h *Handler) TriggerSync(c *gin.Context) {
 
 // GetPackageMeta 获取包元数据（npm客户端兼容）
 func (h *Handler) GetPackageMeta(c *gin.Context) {
-    raw := c.Param("name")
-    scope := c.Param("scope")
-    if scope != "" {
-        if strings.HasPrefix(scope, "@") {
-            raw = scope + "/" + raw
-        } else {
-            raw = "@" + scope + "/" + raw
-        }
-    }
-    if strings.HasPrefix(raw, "/") { raw = raw[1:] }
-    if u, err := url.PathUnescape(raw); err == nil { raw = u }
-    raw = strings.ReplaceAll(raw, "%2F", "/")
-    raw = strings.ReplaceAll(raw, "%2f", "/")
-    if raw == "" { c.JSON(http.StatusNotFound, gin.H{"error": "包不存在"}); return }
+	raw := c.Param("name")
+	scope := c.Param("scope")
+	if scope != "" {
+		if strings.HasPrefix(scope, "@") {
+			raw = scope + "/" + raw
+		} else {
+			raw = "@" + scope + "/" + raw
+		}
+	}
+	if strings.HasPrefix(raw, "/") {
+		raw = raw[1:]
+	}
+	if u, err := url.PathUnescape(raw); err == nil {
+		raw = u
+	}
+	raw = strings.ReplaceAll(raw, "%2F", "/")
+	raw = strings.ReplaceAll(raw, "%2f", "/")
+	if raw == "" {
+		c.JSON(http.StatusNotFound, gin.H{"error": "包不存在"})
+		return
+	}
 
-    md, err := h.vc.BuildPackageMetadata(c.Request.Context(), raw)
-    if err != nil { c.JSON(http.StatusNotFound, gin.H{"error": "包不存在"}); return }
+	md, err := h.vc.BuildPackageMetadata(c.Request.Context(), raw)
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "包不存在"})
+		return
+	}
 
-    syncState := h.syncManager.GetSyncState()
-    host := c.Request.Host
+	syncState := h.syncManager.GetSyncState()
+	host := c.Request.Host
 
-    versions := map[string]gin.H{}
-    for _, v := range md.Versions {
-        key := v.Name + "@" + v.Version
-        tar := v.Dist.Tarball
-        if st, ok := syncState.PackageStates[key]; ok && st.SyncStatus == "success" {
-            tar = fmt.Sprintf("http://%s/download/%s/%s", host, v.Version, url.PathEscape(v.Name))
-        }
-        versions[v.Version] = gin.H{
-            "name":    v.Name,
-            "version": v.Version,
-            "dist": gin.H{
-                "tarball": tar,
-                "shasum":  v.Dist.Shasum,
-                "size":    v.Dist.Size,
-            },
-        }
-    }
+	versions := map[string]gin.H{}
+	for _, v := range md.Versions {
+		key := v.Name + "@" + v.Version
+		tar := v.Dist.Tarball
+		if st, ok := syncState.PackageStates[key]; ok && st.SyncStatus == "success" {
+			tar = fmt.Sprintf("http://%s/download/%s/%s", host, v.Version, url.PathEscape(v.Name))
+		}
+		versions[v.Version] = gin.H{
+			"name":    v.Name,
+			"version": v.Version,
+			"dist": gin.H{
+				"tarball": tar,
+				"shasum":  v.Dist.Shasum,
+				"size":    v.Dist.Size,
+			},
+		}
+	}
 
-    resp := gin.H{
-        "name":       md.Name,
-        "dist-tags":  md.DistTags,
-        "versions":   versions,
-    }
-    c.JSON(http.StatusOK, resp)
+	resp := gin.H{
+		"name":      md.Name,
+		"dist-tags": md.DistTags,
+		"versions":  versions,
+	}
+	c.JSON(http.StatusOK, resp)
 }
 
 // DownloadPackage 下载包
 func (h *Handler) DownloadPackage(c *gin.Context) {
-    name := c.Param("name")
-    if strings.HasPrefix(name, "/") { name = name[1:] }
-    if u, err := url.PathUnescape(name); err == nil {
-        name = u
-    }
-    name = strings.ReplaceAll(name, "%2F", "/")
-    name = strings.ReplaceAll(name, "%2f", "/")
+	name := c.Param("name")
+	if strings.HasPrefix(name, "/") {
+		name = name[1:]
+	}
+	if u, err := url.PathUnescape(name); err == nil {
+		name = u
+	}
+	name = strings.ReplaceAll(name, "%2F", "/")
+	name = strings.ReplaceAll(name, "%2f", "/")
 	version := c.Param("version")
 
 	// 检查包是否存在且已同步
@@ -481,181 +499,247 @@ func (h *Handler) DownloadPackage(c *gin.Context) {
 		return
 	}
 
-    // CDN URL添加端点头为存储桶名
-    s3Key := h.s3Client.GetPackageKey(name, version)
-    if h.config.CDNEnabled && h.config.CDNEndpoint != "" {
-        // 修改处：手动拼接 URL，避免 BuildCDNURL 重复添加前缀
-        // 确保格式为: CDN端点/存储桶名/文件路径
-        endpoint := strings.TrimRight(h.config.CDNEndpoint, "/")
-        u := fmt.Sprintf("%s/%s/%s", endpoint, s3Key)
-        c.Redirect(http.StatusFound, u)
-        return
-    }
-    downloadURL, err := h.s3Client.GetPresignedURL(c.Request.Context(), s3Key, 15*time.Minute)
-    if err != nil {
-        c.JSON(http.StatusInternalServerError, gin.H{"error": "获取下载链接失败"})
-        return
-    }
-    c.Redirect(http.StatusFound, downloadURL)
+	// CDN URL添加端点头为存储桶名
+	s3Key := h.s3Client.GetPackageKey(name, version)
+	if h.config.CDNEnabled && h.config.CDNEndpoint != "" {
+		// 修改处：手动拼接 URL，避免 BuildCDNURL 重复添加前缀
+		// 确保格式为: CDN端点/存储桶名/文件路径
+		endpoint := strings.TrimRight(h.config.CDNEndpoint, "/")
+		u := fmt.Sprintf("%s/%s/%s", endpoint, s3Key)
+		c.Redirect(http.StatusFound, u)
+		return
+	}
+	downloadURL, err := h.s3Client.GetPresignedURL(c.Request.Context(), s3Key, 15*time.Minute)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "获取下载链接失败"})
+		return
+	}
+	c.Redirect(http.StatusFound, downloadURL)
 }
 
 func (h *Handler) GetIndex(c *gin.Context) {
-    data, err := h.ds.Get(c.Request.Context())
-    if err != nil { c.JSON(500, gin.H{"error": "拉取数据源失败"}); return }
-    syncState := h.syncManager.GetSyncState()
-    host := c.Request.Host
-    for i := range data.Packages {
-        key := fmt.Sprintf("%s@%s", data.Packages[i].Name, data.Packages[i].Version)
-        if st, ok := syncState.PackageStates[key]; ok && st.SyncStatus == "success" {
-            data.Packages[i].Dist.Tarball = fmt.Sprintf("http://%s/download/%s/%s", host, data.Packages[i].Version, url.PathEscape(data.Packages[i].Name))
-            if st.Size > 0 { data.Packages[i].Dist.Size = st.Size }
-        }
-    }
-    c.JSON(http.StatusOK, data)
+	data, err := h.ds.Get(c.Request.Context())
+	if err != nil {
+		c.JSON(500, gin.H{"error": "拉取数据源失败"})
+		return
+	}
+	syncState := h.syncManager.GetSyncState()
+	host := c.Request.Host
+	for i := range data.Packages {
+		key := fmt.Sprintf("%s@%s", data.Packages[i].Name, data.Packages[i].Version)
+		if st, ok := syncState.PackageStates[key]; ok && st.SyncStatus == "success" {
+			data.Packages[i].Dist.Tarball = fmt.Sprintf(
+				"http://%s/download/%s/%s",
+				host,
+				data.Packages[i].Version,
+				url.PathEscape(data.Packages[i].Name),
+			)
+			if st.Size > 0 {
+				data.Packages[i].Dist.Size = st.Size
+			}
+		}
+	}
+	c.JSON(http.StatusOK, data)
 }
 
 func (h *Handler) GetRegistry(c *gin.Context) {
-    c.JSON(http.StatusOK, gin.H{"registry": fmt.Sprintf("http://%s/", c.Request.Host)})
+	c.JSON(http.StatusOK, gin.H{"registry": fmt.Sprintf("http://%s/", c.Request.Host)})
 }
+
 // RegistryFallback 处理 npm 客户端的兼容请求（包元数据、搜索、审计）
 func (h *Handler) RegistryFallback(c *gin.Context) {
-    p := c.Request.URL.Path
+	p := c.Request.URL.Path
 
-    // SPA 回退：如果是浏览器请求且不是 API 请求，返回 index.html
-    if strings.Contains(c.Request.Header.Get("Accept"), "text/html") {
-        c.File("./ui/dist/index.html")
-        return
-    }
+	// SPA 回退：如果是浏览器请求且不是 API 请求，返回 index.html
+	if strings.Contains(c.Request.Header.Get("Accept"), "text/html") {
+		c.File("./ui/dist/index.html")
+		return
+	}
 
-    // 兼容安全审计接口，返回空结果
-    if strings.HasPrefix(p, "/-/npm/v1/security/advisories/bulk") {
-        c.JSON(http.StatusOK, gin.H{"advisories": []interface{}{}, "objects": []interface{}{}})
-        return
-    }
-    // 兼容搜索接口：从数据源返回匹配结果
-    if strings.HasPrefix(p, "/-/v1/search") {
-        q := c.Request.URL.Query()
-        text := q.Get("text")
-        size := 20
-        from := 0
-        if v := q.Get("size"); v != "" { if n, err := strconv.Atoi(v); err == nil { size = n } }
-        if v := q.Get("from"); v != "" { if n, err := strconv.Atoi(v); err == nil { from = n } }
-        var objs []gin.H
-        if h.ds != nil {
-            if data, err := h.ds.Get(c.Request.Context()); err == nil {
-                for _, pkg := range data.Packages {
-                    if text == "" || strings.Contains(pkg.Name, text) {
-                        objs = append(objs, gin.H{
-                            "package": gin.H{
-                                "name":        pkg.Name,
-                                "version":     pkg.Version,
-                                "description": pkg.Description,
-                                "links": gin.H{"npm": fmt.Sprintf("http://%s/%s", c.Request.Host, pkg.Name)},
-                            },
-                        })
-                    }
-                }
-            }
-        }
-        total := len(objs)
-        // 简单分页
-        end := from + size
-        if end > total { end = total }
-        if from < 0 { from = 0 }
-        if from > end { from = end }
-        c.JSON(http.StatusOK, gin.H{"objects": objs[from:end], "total": total, "time": time.Now().Format(time.RFC3339)})
-        return
-    }
-    // 包元数据：如 /name 或 /@scope/name
-    raw := strings.TrimPrefix(p, "/")
-    if raw == "" || strings.HasPrefix(raw, "api/") || strings.HasPrefix(raw, "download/") {
-        c.JSON(http.StatusNotFound, gin.H{"error": "未匹配的路由"})
-        return
-    }
-    if u, err := url.PathUnescape(raw); err == nil { raw = u }
-    raw = strings.ReplaceAll(raw, "%2F", "/")
-    raw = strings.ReplaceAll(raw, "%2f", "/")
+	// 兼容安全审计接口，返回空结果
+	if strings.HasPrefix(p, "/-/npm/v1/security/advisories/bulk") {
+		c.JSON(http.StatusOK, gin.H{"advisories": []interface{}{}, "objects": []interface{}{}})
+		return
+	}
+	// 兼容搜索接口：从数据源返回匹配结果
+	if strings.HasPrefix(p, "/-/v1/search") {
+		q := c.Request.URL.Query()
+		text := q.Get("text")
+		size := 20
+		from := 0
+		if v := q.Get("size"); v != "" {
+			if n, err := strconv.Atoi(v); err == nil {
+				size = n
+			}
+		}
+		if v := q.Get("from"); v != "" {
+			if n, err := strconv.Atoi(v); err == nil {
+				from = n
+			}
+		}
+		var objs []gin.H
+		if h.ds != nil {
+			if data, err := h.ds.Get(c.Request.Context()); err == nil {
+				for _, pkg := range data.Packages {
+					if text == "" || strings.Contains(pkg.Name, text) {
+						objs = append(objs, gin.H{
+							"package": gin.H{
+								"name":        pkg.Name,
+								"version":     pkg.Version,
+								"description": pkg.Description,
+								"links": gin.H{
+									"npm": fmt.Sprintf("http://%s/%s",
+										c.Request.Host,
+										pkg.Name,
+									),
+								},
+							},
+						})
+					}
+				}
+			}
+		}
+		total := len(objs)
+		// 简单分页
+		end := from + size
+		if end > total {
+			end = total
+		}
+		if from < 0 {
+			from = 0
+		}
+		if from > end {
+			from = end
+		}
+		c.JSON(http.StatusOK, gin.H{
+			"objects": objs[from:end],
+			"total":   total,
+			"time":    time.Now().Format(time.RFC3339),
+		})
+		return
+	}
+	// 包元数据：如 /name 或 /@scope/name
+	raw := strings.TrimPrefix(p, "/")
+	if raw == "" || strings.HasPrefix(raw, "api/") || strings.HasPrefix(raw, "download/") {
+		c.JSON(http.StatusNotFound, gin.H{"error": "未匹配的路由"})
+		return
+	}
+	if u, err := url.PathUnescape(raw); err == nil {
+		raw = u
+	}
+	raw = strings.ReplaceAll(raw, "%2F", "/")
+	raw = strings.ReplaceAll(raw, "%2f", "/")
 
-    md, err := h.vc.BuildPackageMetadata(c.Request.Context(), raw)
-    if err != nil { c.JSON(http.StatusNotFound, gin.H{"error": "包不存在"}); return }
+	md, err := h.vc.BuildPackageMetadata(c.Request.Context(), raw)
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "包不存在"})
+		return
+	}
 
-    syncState := h.syncManager.GetSyncState()
-    host := c.Request.Host
+	syncState := h.syncManager.GetSyncState()
+	host := c.Request.Host
 
-    versions := map[string]gin.H{}
-    for _, v := range md.Versions {
-        key := v.Name + "@" + v.Version
-        tar := v.Dist.Tarball
-        if st, ok := syncState.PackageStates[key]; ok && st.SyncStatus == "success" {
-            tar = fmt.Sprintf("http://%s/download/%s/%s", host, v.Version, v.Name)
-        }
-        versions[v.Version] = gin.H{
-            "name":    v.Name,
-            "version": v.Version,
-            "dist": gin.H{
-                "tarball": tar,
-                "shasum":  v.Dist.Shasum,
-                "size":    v.Dist.Size,
-            },
-        }
-    }
+	versions := map[string]gin.H{}
+	for _, v := range md.Versions {
+		key := v.Name + "@" + v.Version
+		tar := v.Dist.Tarball
+		if st, ok := syncState.PackageStates[key]; ok && st.SyncStatus == "success" {
+			tar = fmt.Sprintf("http://%s/download/%s/%s", host, v.Version, v.Name)
+		}
+		versions[v.Version] = gin.H{
+			"name":    v.Name,
+			"version": v.Version,
+			"dist": gin.H{
+				"tarball": tar,
+				"shasum":  v.Dist.Shasum,
+				"size":    v.Dist.Size,
+			},
+		}
+	}
 
-    resp := gin.H{
-        "name":       md.Name,
-        "dist-tags":  md.DistTags,
-        "versions":   versions,
-    }
-    c.JSON(http.StatusOK, resp)
+	resp := gin.H{
+		"name":      md.Name,
+		"dist-tags": md.DistTags,
+		"versions":  versions,
+	}
+	c.JSON(http.StatusOK, resp)
 }
 func (h *Handler) RetryFailed(c *gin.Context) {
-    go h.syncManager.RetryFailedNow(context.Background())
-    c.JSON(http.StatusOK, gin.H{"message": "已触发失败重试"})
+	go h.syncManager.RetryFailedNow(context.Background())
+	c.JSON(http.StatusOK, gin.H{"message": "已触发失败重试"})
 }
 func (h *Handler) AdvisoriesBulk(c *gin.Context) {
-    c.JSON(http.StatusOK, gin.H{"advisories": []interface{}{}, "objects": []interface{}{}})
+	c.JSON(http.StatusOK, gin.H{"advisories": []interface{}{}, "objects": []interface{}{}})
 }
 
 func (h *Handler) SearchV1(c *gin.Context) {
-    q := c.Request.URL.Query()
-    text := q.Get("text")
-    size := 20
-    from := 0
-    if v := q.Get("size"); v != "" { if n, err := strconv.Atoi(v); err == nil { size = n } }
-    if v := q.Get("from"); v != "" { if n, err := strconv.Atoi(v); err == nil { from = n } }
+	q := c.Request.URL.Query()
+	text := q.Get("text")
+	size := 20
+	from := 0
+	if v := q.Get("size"); v != "" {
+		if n, err := strconv.Atoi(v); err == nil {
+			size = n
+		}
+	}
+	if v := q.Get("from"); v != "" {
+		if n, err := strconv.Atoi(v); err == nil {
+			from = n
+		}
+	}
 
-    var objs []gin.H
-    if h.ds != nil {
-        if data, err := h.ds.Get(c.Request.Context()); err == nil {
-            for _, pkg := range data.Packages {
-                if text == "" || strings.Contains(pkg.Name, text) {
-                    objs = append(objs, gin.H{
-                        "package": gin.H{
-                            "name":        pkg.Name,
-                            "scope":       scopeOf(pkg.Name),
-                            "version":     pkg.Version,
-                            "description": pkg.Description,
-                            "date":        time.Now().Format(time.RFC3339),
-                            "links": gin.H{"npm": fmt.Sprintf("http://%s/%s", c.Request.Host, pkg.Name)},
-                            "publisher": gin.H{"username": "", "email": ""},
-                            "maintainers": []interface{}{},
-                        },
-                        "score": gin.H{"final": 0.0, "detail": gin.H{"quality": 0.0, "popularity": 0.0, "maintenance": 0.0}},
-                        "searchScore": 1.0,
-                    })
-                }
-            }
-        }
-    }
+	var objs []gin.H
+	if h.ds != nil {
+		if data, err := h.ds.Get(c.Request.Context()); err == nil {
+			for _, pkg := range data.Packages {
+				if text == "" || strings.Contains(pkg.Name, text) {
+					objs = append(objs, gin.H{
+						"package": gin.H{
+							"name":        pkg.Name,
+							"scope":       scopeOf(pkg.Name),
+							"version":     pkg.Version,
+							"description": pkg.Description,
+							"date":        time.Now().Format(time.RFC3339),
+							"links": gin.H{
+								"npm": fmt.Sprintf("http://%s/%s",
+									c.Request.Host, pkg.Name,
+								),
+							},
+							"publisher":   gin.H{"username": "", "email": ""},
+							"maintainers": []interface{}{},
+						},
+						"score": gin.H{
+							"final": 0.0,
+							"detail": gin.H{
+								"quality":     0.0,
+								"popularity":  0.0,
+								"maintenance": 0.0,
+							},
+						},
+						"searchScore": 1.0,
+					})
+				}
+			}
+		}
+	}
 
-    total := len(objs)
-    end := from + size
-    if end > total { end = total }
-    if from < 0 { from = 0 }
-    if from > end { from = end }
-    c.JSON(http.StatusOK, gin.H{"objects": objs[from:end], "total": total, "time": time.Now().Format(time.RFC3339)})
+	total := len(objs)
+	end := from + size
+	if end > total {
+		end = total
+	}
+	if from < 0 {
+		from = 0
+	}
+	if from > end {
+		from = end
+	}
+	c.JSON(http.StatusOK, gin.H{"objects": objs[from:end], "total": total, "time": time.Now().Format(time.RFC3339)})
 }
 
 func scopeOf(name string) string {
-    if strings.HasPrefix(name, "@") { return strings.SplitN(name, "/", 2)[0][1:] }
-    return "unscoped"
+	if strings.HasPrefix(name, "@") {
+		return strings.SplitN(name, "/", 2)[0][1:]
+	}
+	return "unscoped"
 }

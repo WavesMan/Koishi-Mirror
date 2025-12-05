@@ -21,3 +21,6 @@ dist/
 .env*
 config.json
 !*.example
+
+# test
+test/
