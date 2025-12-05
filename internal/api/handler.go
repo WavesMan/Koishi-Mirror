@@ -166,7 +166,7 @@ func (h *Handler) GetMirrorStatus(c *gin.Context) {
 		SyncedPackages: synced,
 		FailedPackages: failed,
 		StorageSize:    storageSize,
-		S3Bucket:       h.config.S3Bucket,
+		S3Bucket:       h.config.TENCENT_COSBucket,
 		DataSourceURL:  h.config.DataSourceURL,
 	}
 

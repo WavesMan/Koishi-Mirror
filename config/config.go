@@ -1,44 +1,44 @@
 package config
 
 import (
-    "bufio"
-    "os"
-    "strconv"
-    "strings"
-    "time"
+	"bufio"
+	"os"
+	"strconv"
+	"strings"
+	"time"
 )
 
 // Config 应用配置
 type Config struct {
-    // S3 配置
-    S3Endpoint  string
-    S3AccessKey string
-    S3SecretKey string
-    S3Region    string
-    S3Bucket    string
-    S3Prefix    string
+	// TENCENT_COS 配置
+	TENCENT_COSEndpoint  string
+	TENCENT_COSAccessKey string
+	TENCENT_COSSecretKey string
+	TENCENT_COSRegion    string
+	TENCENT_COSBucket    string
+	TENCENT_COSPrefix    string
 
-    // CDN 配置
-    CDNEndpoint string
-    CDNEnabled  bool
+	// CDN 配置
+	CDNEndpoint string
+	CDNEnabled  bool
 
-    // 同步配置
-    DataSourceURL string
-    SyncInterval  time.Duration
-    Concurrency   int
-    MaxRetries    int
-    DataSourceTimeout    time.Duration
-    DataSourceMaxRetries int
-    LogLevel string
+	// 同步配置
+	DataSourceURL        string
+	SyncInterval         time.Duration
+	Concurrency          int
+	MaxRetries           int
+	DataSourceTimeout    time.Duration
+	DataSourceMaxRetries int
+	LogLevel             string
 
 	// API 配置
 	APIPort string
 
-    // 缓存配置
-    RedisAddr     string
-    RedisPassword string
-    RedisDB       int
-    CacheTTL      time.Duration
+	// 缓存配置
+	RedisAddr     string
+	RedisPassword string
+	RedisDB       int
+	CacheTTL      time.Duration
 
 	// 数据库配置
 	PGHost     string
@@ -48,61 +48,69 @@ type Config struct {
 	PGDB       string
 	PGSSLMode  string
 
-    // ICP 配置
-    ICPEnabled     bool
-    ICPRecord      string
-    ICPUrl         string
-    SecurityRecord string
-    SecurityUrl    string
+	// ICP 配置
+	ICPEnabled     bool
+	ICPRecord      string
+	ICPUrl         string
+	SecurityRecord string
+	SecurityUrl    string
 }
 
 // LoadConfig 从环境变量加载配置
 func LoadConfig() *Config {
-    loadDotEnv()
-    concurrency, _ := strconv.Atoi(getEnv("SYNC_CONCURRENCY", "10"))
-    maxRetries, _ := strconv.Atoi(getEnv("SYNC_MAX_RETRIES", "3"))
-    syncInterval, _ := time.ParseDuration(getEnv("SYNC_INTERVAL", "1h"))
-    redisDB, _ := strconv.Atoi(getEnv("REDIS_DB", "0"))
-    cacheTTL, _ := time.ParseDuration(getEnv("CACHE_TTL", "10m"))
-    dsTimeout, _ := time.ParseDuration(getEnv("DATA_SOURCE_TIMEOUT", "15s"))
-    dsMaxRetries, _ := strconv.Atoi(getEnv("DATA_SOURCE_MAX_RETRIES", "3"))
-    logLevel := getEnv("LOG_LEVEL", "info")
-    if v := getEnv("LogLevel", ""); v != "" {
-        logLevel = v
-    }
-    cdnEnabled := strings.EqualFold(getEnv("CDN_ENABLED", "false"), "true")
-    if v := getEnv("CDNEnabled", ""); v != "" {
-        cdnEnabled = strings.EqualFold(v, "true")
-    }
-    cdnEndpoint := getEnv("CDN_ENDPOINT", "")
-    if v := getEnv("CDNEndpoint", ""); v != "" {
-        cdnEndpoint = v
-    }
+	loadDotEnv()
+	concurrency, _ := strconv.Atoi(getEnv("SYNC_CONCURRENCY", "10"))
+	maxRetries, _ := strconv.Atoi(getEnv("SYNC_MAX_RETRIES", "3"))
+	syncInterval, _ := time.ParseDuration(getEnv("SYNC_INTERVAL", "1h"))
+	redisDB, _ := strconv.Atoi(getEnv("REDIS_DB", "0"))
+	cacheTTL, _ := time.ParseDuration(getEnv("CACHE_TTL", "10m"))
+	dsTimeout, _ := time.ParseDuration(getEnv("DATA_SOURCE_TIMEOUT", "15s"))
+	dsMaxRetries, _ := strconv.Atoi(getEnv("DATA_SOURCE_MAX_RETRIES", "3"))
+	logLevel := getEnv("LOG_LEVEL", "info")
+	if v := getEnv("LogLevel", ""); v != "" {
+		logLevel = v
+	}
+	cdnEnabled := strings.EqualFold(getEnv("CDN_ENABLED", "false"), "true")
+	if v := getEnv("CDNEnabled", ""); v != "" {
+		cdnEnabled = strings.EqualFold(v, "true")
+	}
+	cdnEndpoint := getEnv("CDN_ENDPOINT", "")
+	if v := getEnv("CDNEndpoint", ""); v != "" {
+		cdnEndpoint = v
+	}
 
-    icpEnabled := strings.EqualFold(getEnv("ICP_ENABLED", "false"), "true")
-    if v := getEnv("ICPEnabled", ""); v != "" {
-        icpEnabled = strings.EqualFold(v, "true")
-    }
-    icpRecord := getEnv("ICP_RECORD", "")
-    if v := getEnv("ICPRecord", ""); v != "" { icpRecord = v }
-    icpUrl := getEnv("ICP_URL", "")
-    if v := getEnv("ICPUrl", ""); v != "" { icpUrl = v }
-    securityRecord := getEnv("SECURITY_RECORD", "")
-    if v := getEnv("SecurityRecord", ""); v != "" { securityRecord = v }
-    securityUrl := getEnv("SECURITY_URL", "")
-    if v := getEnv("SecurityUrl", ""); v != "" { securityUrl = v }
+	icpEnabled := strings.EqualFold(getEnv("ICP_ENABLED", "false"), "true")
+	if v := getEnv("ICPEnabled", ""); v != "" {
+		icpEnabled = strings.EqualFold(v, "true")
+	}
+	icpRecord := getEnv("ICP_RECORD", "")
+	if v := getEnv("ICPRecord", ""); v != "" {
+		icpRecord = v
+	}
+	icpUrl := getEnv("ICP_URL", "")
+	if v := getEnv("ICPUrl", ""); v != "" {
+		icpUrl = v
+	}
+	securityRecord := getEnv("SECURITY_RECORD", "")
+	if v := getEnv("SecurityRecord", ""); v != "" {
+		securityRecord = v
+	}
+	securityUrl := getEnv("SECURITY_URL", "")
+	if v := getEnv("SecurityUrl", ""); v != "" {
+		securityUrl = v
+	}
 
 	return &Config{
-		// S3 配置
-		S3Endpoint:  getEnv("S3_ENDPOINT", ""),
-		S3AccessKey: getEnv("S3_ACCESS_KEY", ""),
-		S3SecretKey: getEnv("S3_SECRET_KEY", ""),
-		S3Region:    getEnv("S3_REGION", "us-east-1"),
-        S3Bucket:    getEnv("S3_BUCKET", "waveyo-npm-mirror"),
-        S3Prefix:    getEnv("S3_PREFIX", "packages/"),
+		// TENCENT_COS 配置
+		TENCENT_COSEndpoint:  getEnv("TENCENT_COS_ENDPOINT", ""),
+		TENCENT_COSAccessKey: getEnv("TENCENT_COS_ACCESS_KEY", ""),
+		TENCENT_COSSecretKey: getEnv("TENCENT_COS_SECRET_KEY", ""),
+		TENCENT_COSRegion:    getEnv("TENCENT_COS_REGION", "ap_shanghai"),
+		TENCENT_COSBucket:    getEnv("TENCENT_COS_BUCKET", "waveyo-koishi-mirror"),
+		TENCENT_COSPrefix:    getEnv("TENCENT_COS_PREFIX", "packages/"),
 
-        CDNEndpoint: cdnEndpoint,
-        CDNEnabled:  cdnEnabled,
+		CDNEndpoint: cdnEndpoint,
+		CDNEnabled:  cdnEnabled,
 
 		// 同步配置
 		DataSourceURL:        getEnv("DATA_SOURCE_URL", "https://ks-store.waveyo.cn/index.json"),
@@ -130,46 +138,46 @@ func LoadConfig() *Config {
 		PGDB:       getEnv("PG_DB", ""),
 		PGSSLMode:  getEnv("PG_SSLMODE", "disable"),
 
-        // ICP 配置
-        ICPEnabled:     icpEnabled,
-        ICPRecord:      icpRecord,
-        ICPUrl:         icpUrl,
-        SecurityRecord: securityRecord,
-        SecurityUrl:    securityUrl,
+		// ICP 配置
+		ICPEnabled:     icpEnabled,
+		ICPRecord:      icpRecord,
+		ICPUrl:         icpUrl,
+		SecurityRecord: securityRecord,
+		SecurityUrl:    securityUrl,
 	}
 }
 
 // getEnv 获取环境变量，如果不存在则返回默认值
 func getEnv(key, defaultValue string) string {
-    value := os.Getenv(key)
-    if value == "" {
-        return defaultValue
-    }
-    return value
+	value := os.Getenv(key)
+	if value == "" {
+		return defaultValue
+	}
+	return value
 }
 
 func loadDotEnv() {
-    paths := []string{".env", ".env.example"}
-    for _, p := range paths {
-        f, err := os.Open(p)
-        if err != nil {
-            continue
-        }
-        scanner := bufio.NewScanner(f)
-        for scanner.Scan() {
-            line := strings.TrimSpace(scanner.Text())
-            if line == "" || strings.HasPrefix(line, "#") {
-                continue
-            }
-            idx := strings.Index(line, "=")
-            if idx <= 0 {
-                continue
-            }
-            key := strings.TrimSpace(line[:idx])
-            val := strings.TrimSpace(line[idx+1:])
-            os.Setenv(key, val)
-        }
-        f.Close()
-        break
-    }
+	paths := []string{".env", ".env.example"}
+	for _, p := range paths {
+		f, err := os.Open(p)
+		if err != nil {
+			continue
+		}
+		scanner := bufio.NewScanner(f)
+		for scanner.Scan() {
+			line := strings.TrimSpace(scanner.Text())
+			if line == "" || strings.HasPrefix(line, "#") {
+				continue
+			}
+			idx := strings.Index(line, "=")
+			if idx <= 0 {
+				continue
+			}
+			key := strings.TrimSpace(line[:idx])
+			val := strings.TrimSpace(line[idx+1:])
+			os.Setenv(key, val)
+		}
+		f.Close()
+		break
+	}
 }
