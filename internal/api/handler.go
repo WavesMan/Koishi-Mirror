@@ -693,13 +693,28 @@ func (h *Handler) DownloadPackage(c *gin.Context) {
 	version := c.Param("version")
 
 	// 检查包是否存在且已同步
-	syncState := h.syncManager.GetSyncState()
-	pkgKey := fmt.Sprintf("%s@%s", name, version)
-
-	state, exists := syncState.PackageStates[pkgKey]
-	if !exists || state.SyncStatus != "success" {
-		c.JSON(http.StatusNotFound, gin.H{"error": "包不存在或未同步完成"})
-		return
+	// 优先从数据库检查
+	var isSynced bool
+	if h.store != nil {
+		if versions, err := h.store.GetPackageVersions(c.Request.Context(), name); err == nil {
+			for _, v := range versions {
+				if v.Version == version && v.SyncStatus == "success" {
+					isSynced = true
+					break
+				}
+			}
+		}
+	}
+	
+	// 如果数据库没有，从内存检查
+	if !isSynced {
+		syncState := h.syncManager.GetSyncState()
+		pkgKey := fmt.Sprintf("%s@%s", name, version)
+		state, exists := syncState.PackageStates[pkgKey]
+		if !exists || state.SyncStatus != "success" {
+			c.JSON(http.StatusNotFound, gin.H{"error": "包不存在或未同步完成"})
+			return
+		}
 	}
 
 	// CDN URL添加端点头为存储桶名
