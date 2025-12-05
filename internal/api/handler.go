@@ -388,20 +388,39 @@ func (h *Handler) GetPackages(c *gin.Context) {
 	}
 
 	// 获取同步状态
-	syncState := h.syncManager.GetSyncState()
-
-	// 补充同步状态信息
-	for i := range pagedPackages {
-		pkgKey := fmt.Sprintf("%s@%s", pagedPackages[i].Name, pagedPackages[i].Version)
-		if state, exists := syncState.PackageStates[pkgKey]; exists {
-			pagedPackages[i].SyncStatus = state.SyncStatus
-			pagedPackages[i].SyncTime = state.SyncTime
-			pagedPackages[i].RetryCount = state.RetryCount
-			if state.Size > 0 {
-				pagedPackages[i].Dist.Size = state.Size
+	// 优先从数据库获取，如果数据库不可用则从内存获取
+	if h.store != nil {
+		for i := range pagedPackages {
+			if versions, err := h.store.GetPackageVersions(c.Request.Context(), pagedPackages[i].Name); err == nil {
+				for _, v := range versions {
+					if v.Version == pagedPackages[i].Version {
+						pagedPackages[i].SyncStatus = v.SyncStatus
+						pagedPackages[i].SyncTime = v.SyncTime
+						if v.Dist.Size > 0 {
+							pagedPackages[i].Dist.Size = v.Dist.Size
+						}
+						break
+					}
+				}
 			}
-		} else {
-			pagedPackages[i].SyncStatus = "pending"
+			if pagedPackages[i].SyncStatus == "" {
+				pagedPackages[i].SyncStatus = "pending"
+			}
+		}
+	} else {
+		syncState := h.syncManager.GetSyncState()
+		for i := range pagedPackages {
+			pkgKey := fmt.Sprintf("%s@%s", pagedPackages[i].Name, pagedPackages[i].Version)
+			if state, exists := syncState.PackageStates[pkgKey]; exists {
+				pagedPackages[i].SyncStatus = state.SyncStatus
+				pagedPackages[i].SyncTime = state.SyncTime
+				pagedPackages[i].RetryCount = state.RetryCount
+				if state.Size > 0 {
+					pagedPackages[i].Dist.Size = state.Size
+				}
+			} else {
+				pagedPackages[i].SyncStatus = "pending"
+			}
 		}
 	}
 
@@ -460,17 +479,43 @@ func (h *Handler) GetPackageDetail(c *gin.Context) {
 			}
 
 			// 获取同步状态
-			pkgKey := fmt.Sprintf("%s@%s", pkg.Name, pkg.Version)
-			syncState := h.syncManager.GetSyncState()
-			syncStatus := "pending"
-			syncTime := time.Time{}
-
-			if state, exists := syncState.PackageStates[pkgKey]; exists {
-				syncStatus = state.SyncStatus
-				syncTime = state.SyncTime
-				if state.Size > 0 {
-					pkg.Dist.Size = state.Size
+			// 优先从数据库获取
+			var syncStatus string
+			var syncTime time.Time
+			var size int64
+			
+			if h.store != nil {
+				if versions, err := h.store.GetPackageVersions(c.Request.Context(), pkg.Name); err == nil {
+					for _, v := range versions {
+						if v.Version == pkg.Version {
+							syncStatus = v.SyncStatus
+							syncTime = v.SyncTime
+							if v.Dist.Size > 0 {
+								size = v.Dist.Size
+							}
+							break
+						}
+					}
 				}
+			}
+			
+			// 如果数据库没有，从内存获取
+			if syncStatus == "" {
+				pkgKey := fmt.Sprintf("%s@%s", pkg.Name, pkg.Version)
+				syncState := h.syncManager.GetSyncState()
+				if state, exists := syncState.PackageStates[pkgKey]; exists {
+					syncStatus = state.SyncStatus
+					syncTime = state.SyncTime
+					if state.Size > 0 {
+						size = state.Size
+					}
+				} else {
+					syncStatus = "pending"
+				}
+			}
+			
+			if size > 0 {
+				pkg.Dist.Size = size
 			}
 
 			// 添加版本信息
