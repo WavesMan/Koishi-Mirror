@@ -854,16 +854,37 @@ func (h *Handler) RegistryFallback(c *gin.Context) {
 		return
 	}
 
-	syncState := h.syncManager.GetSyncState()
 	host := c.Request.Host
 
 	versions := map[string]gin.H{}
 	for _, v := range md.Versions {
 		key := v.Name + "@" + v.Version
 		tar := v.Dist.Tarball
-		if st, ok := syncState.PackageStates[key]; ok && st.SyncStatus == "success" {
-			tar = fmt.Sprintf("http://%s/download/%s/%s", host, v.Version, v.Name)
+		
+		// 检查是否已同步（优先从数据库检查）
+		isSynced := false
+		if h.store != nil {
+			if dbVersions, err := h.store.GetPackageVersions(c.Request.Context(), v.Name); err == nil {
+				for _, dbv := range dbVersions {
+					if dbv.Version == v.Version && dbv.SyncStatus == "success" {
+						isSynced = true
+						break
+					}
+				}
+			}
 		}
+		// 如果数据库没有，从内存检查
+		if !isSynced {
+			syncState := h.syncManager.GetSyncState()
+			if st, ok := syncState.PackageStates[key]; ok && st.SyncStatus == "success" {
+				isSynced = true
+			}
+		}
+		
+		if isSynced {
+			tar = fmt.Sprintf("http://%s/download/%s/%s", host, v.Version, url.PathEscape(v.Name))
+		}
+		
 		versions[v.Version] = gin.H{
 			"name":    v.Name,
 			"version": v.Version,
