@@ -169,7 +169,7 @@ export default {
       
       try {
         const encoded = encodeURIComponent(name)
-        const res = await axios.get(`/package/${encoded}`)
+        const res = await axios.get(`/api/package/${encoded}`)
         packageDetail.value = res.data
         // Ensure versions are sorted (descending)
         if (packageDetail.value.versions) {

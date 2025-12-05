@@ -388,7 +388,11 @@ setup_user_and_dirs() {
 setup_pnpm_config() {
   log_info "配置 pnpm 优化..."
 
-  local npmrc_file="ui/.npmrc"
+  # 在 ui 目录内调用，本地 .npmrc
+  local npmrc_file=".npmrc"
+  if [[ ! -f "$npmrc_file" ]]; then
+    echo "# 初始化 .npmrc" > "$npmrc_file"
+  fi
 
   if [[ "$PACKAGE_MANAGER" == "pnpm" ]]; then
     cat > "$npmrc_file" << 'EOF'
@@ -397,9 +401,6 @@ shamefully-hoist=true
 strict-peer-dependencies=false
 prefer-frozen-lockfile=true
 auto-install-peers=true
-
-# 清理缓存
-pnpm cache clean
 
 # 缓存配置
 store-dir=.pnpm-store
@@ -444,21 +445,20 @@ build_frontend() {
       log_info "使用 pnpm 加速构建..."
       # 检查 pnpm-lock.yaml
       if [[ -f "pnpm-lock.yaml" ]]; then
-        pnpm install --frozen-lockfile --silent
+        pnpm install --frozen-lockfile
       else
-        pnpm install --silent
+        pnpm install
       fi
-      pnpm run build --silent
+      pnpm run build
       ;;
     npm)
       log_info "使用 npm 构建..."
       if [[ -f "package-lock.json" ]]; then
-        npm ci --silent
+        npm ci
       else
-        npm install --silent
+        npm install
       fi
-      # 先清理缓存
-      rm -rf node_modules && npm run build --silent
+      npm run build
       ;;
   esac
   

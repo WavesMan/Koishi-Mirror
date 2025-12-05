@@ -481,9 +481,10 @@ func (h *Handler) DownloadPackage(c *gin.Context) {
 		return
 	}
 
+    // CDN URL添加端点头为存储桶名
     s3Key := h.s3Client.GetPackageKey(name, version)
     if h.config.CDNEnabled && h.config.CDNEndpoint != "" {
-        u := h.s3Client.BuildCDNURL(s3Key)
+        u := h.s3Client.BuildCDNURL(h.config.S3Bucket + "/" + s3Key)
         if u != "" {
             c.Redirect(http.StatusFound, u)
             return
