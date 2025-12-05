@@ -535,7 +535,12 @@ func (h *Handler) GetPackageDetail(c *gin.Context) {
 				SyncStatus: syncStatus,
 				SyncTime:   syncTime,
 			}
-			version.Dist.Tarball = fmt.Sprintf("/download/%s/%s", pkg.Version, url.PathEscape(pkg.Name))
+            if syncStatus == "success" && h.config.CDNEnabled && h.config.CDNEndpoint != "" {
+                s3Key := h.s3Client.GetPackageKey(pkg.Name, pkg.Version)
+                version.Dist.Tarball = h.s3Client.BuildCDNURL(s3Key)
+            } else {
+                version.Dist.Tarball = fmt.Sprintf("/download/%s/%s", pkg.Version, url.PathEscape(pkg.Name))
+            }
 			version.Dist.Size = pkg.Dist.Size
 			version.Dist.Shasum = pkg.Dist.Shasum
 
@@ -725,12 +730,17 @@ func (h *Handler) GetPackageMeta(c *gin.Context) {
 	host := c.Request.Host
 
 	versions := map[string]gin.H{}
-	for _, v := range md.Versions {
-		key := v.Name + "@" + v.Version
-		tar := v.Dist.Tarball
-		if st, ok := syncState.PackageStates[key]; ok && st.SyncStatus == "success" {
-			tar = fmt.Sprintf("http://%s/download/%s/%s", host, v.Version, url.PathEscape(v.Name))
-		}
+    for _, v := range md.Versions {
+        key := v.Name + "@" + v.Version
+        tar := v.Dist.Tarball
+        if st, ok := syncState.PackageStates[key]; ok && st.SyncStatus == "success" {
+            if h.config.CDNEnabled && h.config.CDNEndpoint != "" {
+                s3Key := h.s3Client.GetPackageKey(v.Name, v.Version)
+                tar = h.s3Client.BuildCDNURL(s3Key)
+            } else {
+                tar = fmt.Sprintf("http://%s/download/%s/%s", host, v.Version, url.PathEscape(v.Name))
+            }
+        }
 		versions[v.Version] = gin.H{
 			"name":    v.Name,
 			"version": v.Version,
@@ -832,17 +842,22 @@ func (h *Handler) GetIndex(c *gin.Context) {
 	host := c.Request.Host
 	for i := range data.Packages {
 		key := fmt.Sprintf("%s@%s", data.Packages[i].Name, data.Packages[i].Version)
-		if st, ok := syncState.PackageStates[key]; ok && st.SyncStatus == "success" {
-			data.Packages[i].Dist.Tarball = fmt.Sprintf(
-				"http://%s/download/%s/%s",
-				host,
-				data.Packages[i].Version,
-				url.PathEscape(data.Packages[i].Name),
-			)
-			if st.Size > 0 {
-				data.Packages[i].Dist.Size = st.Size
-			}
-		}
+        if st, ok := syncState.PackageStates[key]; ok && st.SyncStatus == "success" {
+            if h.config.CDNEnabled && h.config.CDNEndpoint != "" {
+                s3Key := h.s3Client.GetPackageKey(data.Packages[i].Name, data.Packages[i].Version)
+                data.Packages[i].Dist.Tarball = h.s3Client.BuildCDNURL(s3Key)
+            } else {
+                data.Packages[i].Dist.Tarball = fmt.Sprintf(
+                    "http://%s/download/%s/%s",
+                    host,
+                    data.Packages[i].Version,
+                    url.PathEscape(data.Packages[i].Name),
+                )
+            }
+            if st.Size > 0 {
+                data.Packages[i].Dist.Size = st.Size
+            }
+        }
 	}
 	c.JSON(http.StatusOK, data)
 }
@@ -978,9 +993,14 @@ func (h *Handler) RegistryFallback(c *gin.Context) {
 			}
 		}
 
-		if isSynced {
-			tar = fmt.Sprintf("http://%s/download/%s/%s", host, v.Version, url.PathEscape(v.Name))
-		}
+        if isSynced {
+            if h.config.CDNEnabled && h.config.CDNEndpoint != "" {
+                s3Key := h.s3Client.GetPackageKey(v.Name, v.Version)
+                tar = h.s3Client.BuildCDNURL(s3Key)
+            } else {
+                tar = fmt.Sprintf("http://%s/download/%s/%s", host, v.Version, url.PathEscape(v.Name))
+            }
+        }
 
 		versions[v.Version] = gin.H{
 			"name":    v.Name,

@@ -1,11 +1,12 @@
 package proxy
 
 import (
-	"encoding/json"
-	"fmt"
-	"io"
-	"net/http"
-	"net/url"
+    "compress/gzip"
+    "encoding/json"
+    "fmt"
+    "io"
+    "net/http"
+    "net/url"
 )
 
 // UpstreamProxy 上游代理服务
@@ -16,44 +17,57 @@ type UpstreamProxy struct {
 
 // NewUpstreamProxy 创建新的上游代理
 func NewUpstreamProxy(upstreamURL string) *UpstreamProxy {
-	if upstreamURL == "" {
-		upstreamURL = "https://registry.npmjs.org"
-	}
-	return &UpstreamProxy{
-		upstreamURL: upstreamURL,
-		client:      &http.Client{},
-	}
+    if upstreamURL == "" {
+        upstreamURL = "https://registry.npmjs.org"
+    }
+    return &UpstreamProxy{
+        upstreamURL: upstreamURL,
+        client:      &http.Client{Transport: &http.Transport{DisableCompression: true}},
+    }
 }
 
 // ProxyMetadata 代理包元数据请求
 func (p *UpstreamProxy) ProxyMetadata(packageName string) (*http.Response, error) {
-	targetURL := fmt.Sprintf("%s/%s", p.upstreamURL, url.PathEscape(packageName))
-	return p.client.Get(targetURL)
+    targetURL := fmt.Sprintf("%s/%s", p.upstreamURL, url.PathEscape(packageName))
+    req, err := http.NewRequest("GET", targetURL, nil)
+    if err != nil {
+        return nil, err
+    }
+    req.Header.Set("Accept-Encoding", "gzip")
+    return p.client.Do(req)
 }
 
 // GetTarballURL 获取指定版本的 tarball URL
 func (p *UpstreamProxy) GetTarballURL(packageName, version string) (string, error) {
-	resp, err := p.ProxyMetadata(packageName)
-	if err != nil {
-		return "", err
-	}
-	defer resp.Body.Close()
+    resp, err := p.ProxyMetadata(packageName)
+    if err != nil {
+        return "", err
+    }
+    defer resp.Body.Close()
 
-	if resp.StatusCode != http.StatusOK {
-		return "", fmt.Errorf("upstream returned status %d", resp.StatusCode)
-	}
+    if resp.StatusCode != http.StatusOK {
+        return "", fmt.Errorf("upstream returned status %d", resp.StatusCode)
+    }
 
-	var meta struct {
-		Versions map[string]struct {
-			Dist struct {
-				Tarball string `json:"tarball"`
-			} `json:"dist"`
-		} `json:"versions"`
-	}
-
-	if err := json.NewDecoder(resp.Body).Decode(&meta); err != nil {
-		return "", err
-	}
+    var meta struct {
+        Versions map[string]struct {
+            Dist struct {
+                Tarball string `json:"tarball"`
+            } `json:"dist"`
+        } `json:"versions"`
+    }
+    var reader io.Reader = resp.Body
+    if resp.Header.Get("Content-Encoding") == "gzip" {
+        gr, err := gzip.NewReader(resp.Body)
+        if err != nil {
+            return "", err
+        }
+        defer gr.Close()
+        reader = gr
+    }
+    if err := json.NewDecoder(reader).Decode(&meta); err != nil {
+        return "", err
+    }
 
 	versionInfo, ok := meta.Versions[version]
 	if !ok || versionInfo.Dist.Tarball == "" {
@@ -65,7 +79,12 @@ func (p *UpstreamProxy) GetTarballURL(packageName, version string) (string, erro
 
 // ProxyTarball 代理 tarball 下载请求
 func (p *UpstreamProxy) ProxyTarball(tarballURL string) (*http.Response, error) {
-	return p.client.Get(tarballURL)
+    req, err := http.NewRequest("GET", tarballURL, nil)
+    if err != nil {
+        return nil, err
+    }
+    req.Header.Set("Accept-Encoding", "gzip")
+    return p.client.Do(req)
 }
 
 // StreamResponse 将上游响应流式传输到目标 writer
