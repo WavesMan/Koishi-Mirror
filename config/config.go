@@ -64,6 +64,13 @@ func LoadConfig() *Config {
         logLevel = v
     }
     cdnEnabled := strings.EqualFold(getEnv("CDN_ENABLED", "false"), "true")
+    if v := getEnv("CDNEnabled", ""); v != "" {
+        cdnEnabled = strings.EqualFold(v, "true")
+    }
+    cdnEndpoint := getEnv("CDN_ENDPOINT", "")
+    if v := getEnv("CDNEndpoint", ""); v != "" {
+        cdnEndpoint = v
+    }
 
 	return &Config{
 		// S3 配置
@@ -74,7 +81,7 @@ func LoadConfig() *Config {
         S3Bucket:    getEnv("S3_BUCKET", "waveyo-npm-mirror"),
         S3Prefix:    getEnv("S3_PREFIX", "packages/"),
 
-        CDNEndpoint: getEnv("CDN_ENDPOINT", ""),
+        CDNEndpoint: cdnEndpoint,
         CDNEnabled:  cdnEnabled,
 
 		// 同步配置
