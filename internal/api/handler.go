@@ -114,7 +114,28 @@ func (h *Handler) GetPackageVersions(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"name": name, "versions": md.Versions})
+	
+	// 补充同步状态信息
+	syncState := h.syncManager.GetSyncState()
+	versionsWithStatus := make([]gin.H, 0, len(md.Versions))
+	for _, v := range md.Versions {
+		pkgKey := fmt.Sprintf("%s@%s", v.Name, v.Version)
+		syncStatus := "pending"
+		var syncTime time.Time
+		if state, exists := syncState.PackageStates[pkgKey]; exists {
+			syncStatus = state.SyncStatus
+			syncTime = state.SyncTime
+		}
+		versionsWithStatus = append(versionsWithStatus, gin.H{
+			"name":       v.Name,
+			"version":    v.Version,
+			"dist":       v.Dist,
+			"syncStatus": syncStatus,
+			"syncTime":   syncTime,
+		})
+	}
+	
+	c.JSON(http.StatusOK, gin.H{"name": name, "versions": versionsWithStatus})
 }
 
 func (h *Handler) GetPackageDistTags(c *gin.Context) {
@@ -124,7 +145,26 @@ func (h *Handler) GetPackageDistTags(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"name": name, "distTags": md.DistTags})
+	
+	// 补充同步状态信息
+	syncState := h.syncManager.GetSyncState()
+	distTagsWithStatus := make(map[string]gin.H)
+	for tag, version := range md.DistTags {
+		pkgKey := fmt.Sprintf("%s@%s", name, version)
+		syncStatus := "pending"
+		var syncTime time.Time
+		if state, exists := syncState.PackageStates[pkgKey]; exists {
+			syncStatus = state.SyncStatus
+			syncTime = state.SyncTime
+		}
+		distTagsWithStatus[tag] = gin.H{
+			"version":    version,
+			"syncStatus": syncStatus,
+			"syncTime":   syncTime,
+		}
+	}
+	
+	c.JSON(http.StatusOK, gin.H{"name": name, "distTags": distTagsWithStatus})
 }
 
 func (h *Handler) ResolveVersion(c *gin.Context) {
@@ -135,7 +175,23 @@ func (h *Handler) ResolveVersion(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"name": name, "version": v})
+	
+	// 补充同步状态信息
+	syncState := h.syncManager.GetSyncState()
+	pkgKey := fmt.Sprintf("%s@%s", name, v)
+	syncStatus := "pending"
+	var syncTime time.Time
+	if state, exists := syncState.PackageStates[pkgKey]; exists {
+		syncStatus = state.SyncStatus
+		syncTime = state.SyncTime
+	}
+	
+	c.JSON(http.StatusOK, gin.H{
+		"name":       name,
+		"version":    v,
+		"syncStatus": syncStatus,
+		"syncTime":   syncTime,
+	})
 }
 
 // GetMirrorCOSStatus 获取镜像状态
