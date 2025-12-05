@@ -484,11 +484,12 @@ func (h *Handler) DownloadPackage(c *gin.Context) {
     // CDN URL添加端点头为存储桶名
     s3Key := h.s3Client.GetPackageKey(name, version)
     if h.config.CDNEnabled && h.config.CDNEndpoint != "" {
-        u := h.s3Client.BuildCDNURL(h.config.S3Bucket + "/" + s3Key)
-        if u != "" {
-            c.Redirect(http.StatusFound, u)
-            return
-        }
+        // 修改处：手动拼接 URL，避免 BuildCDNURL 重复添加前缀
+        // 确保格式为: CDN端点/存储桶名/文件路径
+        endpoint := strings.TrimRight(h.config.CDNEndpoint, "/")
+        u := fmt.Sprintf("%s/%s/%s", endpoint, h.config.S3Bucket, s3Key)
+        c.Redirect(http.StatusFound, u)
+        return
     }
     downloadURL, err := h.s3Client.GetPresignedURL(c.Request.Context(), s3Key, 15*time.Minute)
     if err != nil {
