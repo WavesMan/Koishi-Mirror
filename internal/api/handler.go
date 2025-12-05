@@ -850,7 +850,9 @@ func (h *Handler) RegistryFallback(c *gin.Context) {
 
 	md, err := h.vc.BuildPackageMetadata(c.Request.Context(), raw)
 	if err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"error": "包不存在"})
+		// 如果本地没有，代理到上游 npm registry
+		upstreamURL := fmt.Sprintf("https://registry.npmjs.org/%s", url.PathEscape(raw))
+		c.Redirect(http.StatusMovedPermanently, upstreamURL)
 		return
 	}
 
