@@ -63,13 +63,18 @@ type StorageStats struct {
 
 // MirrorStatus 镜像状态
 type MirrorStatus struct {
-	LastSyncTime   time.Time `json:"lastSyncTime"`
-	TotalPackages  int       `json:"totalPackages"`
-	SyncedPackages int       `json:"syncedPackages"`
-	FailedPackages int       `json:"failedPackages"`
-	StorageSize    int64     `json:"storageSize"`
-	S3Bucket       string    `json:"s3Bucket"`
-	DataSourceURL  string    `json:"dataSourceURL"`
+    LastSyncTime   time.Time `json:"lastSyncTime"`
+    TotalPackages  int       `json:"totalPackages"`
+    SyncedPackages int       `json:"syncedPackages"`
+    FailedPackages int       `json:"failedPackages"`
+    StorageSize    int64     `json:"storageSize"`
+    S3Bucket       string    `json:"s3Bucket"`
+    DataSourceURL  string    `json:"dataSourceURL"`
+    ICPEnabled     bool      `json:"icpEnabled"`
+    ICPRecord      string    `json:"icpRecord"`
+    ICPUrl         string    `json:"icpUrl"`
+    SecurityRecord string    `json:"securityRecord"`
+    SecurityUrl    string    `json:"securityUrl"`
 }
 
 // PackageDetail 包详情

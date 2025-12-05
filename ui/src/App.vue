@@ -33,6 +33,10 @@
           <p class="copyright">© 2025-{{ new Date().getFullYear() }} WaveYo Koishi Mirror</p>
           <p class="description">高性能、安全可靠的 Koishi Plugins 镜像服务</p>
         </div>
+        <div class="icp-links">
+          <a v-if="status.icpEnabled && status.icpRecord" :href="status.icpUrl || 'https://beian.miit.gov.cn'" target="_blank">{{ status.icpRecord }}</a>
+          <a v-if="status.icpEnabled && status.securityRecord" :href="status.securityUrl" target="_blank">{{ status.securityRecord }}</a>
+        </div>
         <div class="footer-right">
           <a href="#" @click.prevent="openPolicy('terms')">使用条款</a>
           <a href="#" @click.prevent="openPolicy('privacy')">隐私政策</a>
@@ -53,7 +57,8 @@
 </template>
 
 <script>
-import { ref, computed } from 'vue'
+import { ref, computed, onMounted } from 'vue'
+import axios from 'axios'
 import TermsMd from './assets/Terms_of_Service_nd_Privacy_Policy.md?raw'
 
 export default {
@@ -61,6 +66,13 @@ export default {
   setup() {
     const showPolicy = ref(false)
     const policySection = ref('terms')
+    const status = ref({
+      icpEnabled: false,
+      icpRecord: '',
+      icpUrl: '',
+      securityRecord: '',
+      securityUrl: ''
+    })
 
     const renderMarkdown = (md) => {
       // 基础 Markdown 渲染（标题、粗体、斜体、链接、列表、代码块）
@@ -101,7 +113,18 @@ export default {
       document.body.style.overflow = ''
     }
 
-    return { showPolicy, policyHtml, openPolicy, closePolicy }
+    const fetchStatus = async () => {
+      try {
+        const res = await axios.get('/status')
+        status.value = res.data || status.value
+      } catch (e) {}
+    }
+
+    onMounted(() => {
+      fetchStatus()
+    })
+
+    return { showPolicy, policyHtml, openPolicy, closePolicy, status }
   }
 }
 </script>
@@ -194,6 +217,8 @@ export default {
   display: flex;
   justify-content: space-between;
   align-items: center;
+  flex-wrap: wrap;
+  gap: 1rem;
 }
 
 .footer-left .copyright {
@@ -218,6 +243,16 @@ export default {
 
 .footer-right a:hover {
   color: var(--primary-color);
+}
+
+.icp-links { display: flex; gap: 1rem; min-height: 22px; }
+.icp-links a { color: var(--text-secondary); font-size: 0.875rem; }
+.icp-links a:hover { color: var(--primary-color); }
+
+@media (max-width: 768px) {
+  .footer-content { flex-direction: column; align-items: flex-start; gap: 0.75rem; }
+  .footer-right { gap: 1rem; }
+  .icp-links { flex-wrap: wrap; }
 }
 
 /* Modal */

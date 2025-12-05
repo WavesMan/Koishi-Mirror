@@ -47,6 +47,13 @@ type Config struct {
 	PGPassword string
 	PGDB       string
 	PGSSLMode  string
+
+    // ICP 配置
+    ICPEnabled     bool
+    ICPRecord      string
+    ICPUrl         string
+    SecurityRecord string
+    SecurityUrl    string
 }
 
 // LoadConfig 从环境变量加载配置
@@ -71,6 +78,19 @@ func LoadConfig() *Config {
     if v := getEnv("CDNEndpoint", ""); v != "" {
         cdnEndpoint = v
     }
+
+    icpEnabled := strings.EqualFold(getEnv("ICP_ENABLED", "false"), "true")
+    if v := getEnv("ICPEnabled", ""); v != "" {
+        icpEnabled = strings.EqualFold(v, "true")
+    }
+    icpRecord := getEnv("ICP_RECORD", "")
+    if v := getEnv("ICPRecord", ""); v != "" { icpRecord = v }
+    icpUrl := getEnv("ICP_URL", "")
+    if v := getEnv("ICPUrl", ""); v != "" { icpUrl = v }
+    securityRecord := getEnv("SECURITY_RECORD", "")
+    if v := getEnv("SecurityRecord", ""); v != "" { securityRecord = v }
+    securityUrl := getEnv("SECURITY_URL", "")
+    if v := getEnv("SecurityUrl", ""); v != "" { securityUrl = v }
 
 	return &Config{
 		// S3 配置
@@ -109,6 +129,13 @@ func LoadConfig() *Config {
 		PGPassword: getEnv("PG_PASSWORD", ""),
 		PGDB:       getEnv("PG_DB", ""),
 		PGSSLMode:  getEnv("PG_SSLMODE", "disable"),
+
+        // ICP 配置
+        ICPEnabled:     icpEnabled,
+        ICPRecord:      icpRecord,
+        ICPUrl:         icpUrl,
+        SecurityRecord: securityRecord,
+        SecurityUrl:    securityUrl,
 	}
 }
 

@@ -43,6 +43,17 @@ func NewHandler(cfg *config.Config, s3Client *s3client.Client, syncManager *sync
 
 // RegisterRoutes 注册路由
 func (h *Handler) RegisterRoutes(r *gin.Engine) {
+    r.Use(func(c *gin.Context) {
+        p := c.Request.URL.Path
+        if c.Request.Method == "GET" {
+            if strings.HasPrefix(p, "/assets/") {
+                c.Writer.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
+            } else if p == "/" || strings.HasSuffix(p, "index.html") {
+                c.Writer.Header().Set("Cache-Control", "no-cache")
+            }
+        }
+        c.Next()
+    })
     // 前端接口
     r.GET("/api/status", h.GetMirrorStatus)
     r.GET("/api/packages", h.GetPackages)
@@ -68,7 +79,7 @@ func (h *Handler) RegisterRoutes(r *gin.Engine) {
 
     // npm客户端兼容接口：使用 NoRoute 作为回退以避免与 /api 路由冲突
     r.NoRoute(h.RegistryFallback)
-    r.GET("/download/:name/:version", h.DownloadPackage)
+    r.GET("/download/:version/*name", h.DownloadPackage)
     r.GET("/index.json", h.GetIndex)
 }
 
@@ -156,6 +167,12 @@ func (h *Handler) GetMirrorStatus(c *gin.Context) {
         S3Bucket:       h.config.S3Bucket,
         DataSourceURL:  h.config.DataSourceURL,
     }
+
+    status.ICPEnabled = h.config.ICPEnabled
+    status.ICPRecord = h.config.ICPRecord
+    status.ICPUrl = h.config.ICPUrl
+    status.SecurityRecord = h.config.SecurityRecord
+    status.SecurityUrl = h.config.SecurityUrl
 
     c.JSON(http.StatusOK, status)
 }
@@ -307,7 +324,7 @@ func (h *Handler) GetPackageDetail(c *gin.Context) {
 				SyncStatus: syncStatus,
 				SyncTime:   syncTime,
 			}
-            version.Dist.Tarball = fmt.Sprintf("/download/%s/%s", url.PathEscape(pkg.Name), pkg.Version)
+            version.Dist.Tarball = fmt.Sprintf("/download/%s/%s", pkg.Version, url.PathEscape(pkg.Name))
 			version.Dist.Size = pkg.Dist.Size
 			version.Dist.Shasum = pkg.Dist.Shasum
 
@@ -422,7 +439,7 @@ func (h *Handler) GetPackageMeta(c *gin.Context) {
         key := v.Name + "@" + v.Version
         tar := v.Dist.Tarball
         if st, ok := syncState.PackageStates[key]; ok && st.SyncStatus == "success" {
-            tar = fmt.Sprintf("http://%s/download/%s/%s", host, url.PathEscape(v.Name), v.Version)
+            tar = fmt.Sprintf("http://%s/download/%s/%s", host, v.Version, url.PathEscape(v.Name))
         }
         versions[v.Version] = gin.H{
             "name":    v.Name,
@@ -445,12 +462,13 @@ func (h *Handler) GetPackageMeta(c *gin.Context) {
 
 // DownloadPackage 下载包
 func (h *Handler) DownloadPackage(c *gin.Context) {
-	name := c.Param("name")
-	if u, err := url.PathUnescape(name); err == nil {
-		name = u
-	}
-	name = strings.ReplaceAll(name, "%2F", "/")
-	name = strings.ReplaceAll(name, "%2f", "/")
+    name := c.Param("name")
+    if strings.HasPrefix(name, "/") { name = name[1:] }
+    if u, err := url.PathUnescape(name); err == nil {
+        name = u
+    }
+    name = strings.ReplaceAll(name, "%2F", "/")
+    name = strings.ReplaceAll(name, "%2f", "/")
 	version := c.Param("version")
 
 	// 检查包是否存在且已同步
@@ -487,7 +505,7 @@ func (h *Handler) GetIndex(c *gin.Context) {
     for i := range data.Packages {
         key := fmt.Sprintf("%s@%s", data.Packages[i].Name, data.Packages[i].Version)
         if st, ok := syncState.PackageStates[key]; ok && st.SyncStatus == "success" {
-            data.Packages[i].Dist.Tarball = fmt.Sprintf("http://%s/download/%s/%s", host, url.PathEscape(data.Packages[i].Name), data.Packages[i].Version)
+            data.Packages[i].Dist.Tarball = fmt.Sprintf("http://%s/download/%s/%s", host, data.Packages[i].Version, url.PathEscape(data.Packages[i].Name))
             if st.Size > 0 { data.Packages[i].Dist.Size = st.Size }
         }
     }
@@ -567,7 +585,7 @@ func (h *Handler) RegistryFallback(c *gin.Context) {
         key := v.Name + "@" + v.Version
         tar := v.Dist.Tarball
         if st, ok := syncState.PackageStates[key]; ok && st.SyncStatus == "success" {
-            tar = fmt.Sprintf("http://%s/download/%s/%s", host, v.Name, v.Version)
+            tar = fmt.Sprintf("http://%s/download/%s/%s", host, v.Version, v.Name)
         }
         versions[v.Version] = gin.H{
             "name":    v.Name,
