@@ -487,7 +487,7 @@ func (h *Handler) DownloadPackage(c *gin.Context) {
         // 修改处：手动拼接 URL，避免 BuildCDNURL 重复添加前缀
         // 确保格式为: CDN端点/存储桶名/文件路径
         endpoint := strings.TrimRight(h.config.CDNEndpoint, "/")
-        u := fmt.Sprintf("%s/%s/%s", endpoint, h.config.S3Bucket, s3Key)
+        u := fmt.Sprintf("%s/%s/%s", endpoint, s3Key)
         c.Redirect(http.StatusFound, u)
         return
     }
