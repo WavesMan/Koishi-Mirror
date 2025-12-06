@@ -13,6 +13,8 @@ import (
     "npm-mirror/internal/s3client"
     "npm-mirror/internal/sync"
     pgstore "npm-mirror/internal/storage/postgres"
+    cache "npm-mirror/internal/cache"
+    "golang.org/x/sync/singleflight"
 )
 
 type Controller struct {
@@ -20,10 +22,13 @@ type Controller struct {
     s3  *s3client.Client
     sm  *sync.SyncManager
     store *pgstore.Store
+    cache *cache.Redis
+    lru   *cache.LRU
+    flight singleflight.Group
 }
 
-func NewController(cfg *config.Config, s3 *s3client.Client, sm *sync.SyncManager, store *pgstore.Store) *Controller {
-    return &Controller{cfg: cfg, s3: s3, sm: sm, store: store}
+func NewController(cfg *config.Config, s3 *s3client.Client, sm *sync.SyncManager, store *pgstore.Store, c *cache.Redis, l *cache.LRU) *Controller {
+    return &Controller{cfg: cfg, s3: s3, sm: sm, store: store, cache: c, lru: l}
 }
 
 type PackageMetadata struct {
@@ -33,6 +38,50 @@ type PackageMetadata struct {
 }
 
 func (vc *Controller) BuildPackageMetadata(ctx context.Context, name string) (*PackageMetadata, error) {
+    if vc.lru != nil {
+        if s, ok := vc.lru.Get("pkg:meta:" + name); ok && s != "" {
+            var md PackageMetadata
+            if json.Unmarshal([]byte(s), &md) == nil && md.Name != "" {
+                if vc.cache != nil && vc.cfg.CacheSoftTTL > 0 {
+                    if ttl, err := vc.cache.TTL(ctx, "pkg:meta:"+name); err == nil && ttl > 0 && ttl <= vc.cfg.CacheSoftTTL {
+                        go func() {
+                            vc.flight.Do("pkg_meta:"+name, func() (interface{}, error) {
+                                return vc.rebuildAndCache(ctx, name)
+                            })
+                        }()
+                    }
+                }
+                return &md, nil
+            }
+        }
+    }
+    if vc.cache != nil {
+        if s, err := vc.cache.Get(ctx, "pkg:meta:"+name); err == nil && s != "" {
+            var md PackageMetadata
+            if json.Unmarshal([]byte(s), &md) == nil && md.Name != "" {
+                if vc.cfg.CacheSoftTTL > 0 {
+                    if ttl, err := vc.cache.TTL(ctx, "pkg:meta:"+name); err == nil && ttl > 0 && ttl <= vc.cfg.CacheSoftTTL {
+                        go func() {
+                            vc.flight.Do("pkg_meta:"+name, func() (interface{}, error) {
+                                return vc.rebuildAndCache(ctx, name)
+                            })
+                        }()
+                    }
+                }
+                return &md, nil
+            }
+        }
+    }
+    v, errDo, _ := vc.flight.Do("pkg_meta:"+name, func() (interface{}, error) {
+    return vc.rebuildAndCache(ctx, name)
+    })
+    if errDo != nil { return nil, errDo }
+    if v == nil { return nil, errors.New("构建失败") }
+    md, _ := v.(*PackageMetadata)
+    return md, nil
+}
+
+func (vc *Controller) rebuildAndCache(ctx context.Context, name string) (interface{}, error) {
     var list []models.Package
     if vc.store != nil {
         l, err := vc.store.GetPackageVersions(ctx, name)
@@ -86,8 +135,14 @@ func (vc *Controller) BuildPackageMetadata(ctx context.Context, name string) (*P
     if len(list) > 0 && tags["latest"] == "" {
         tags["latest"] = list[0].Version
     }
-
-    return &PackageMetadata{Name: name, Versions: list, DistTags: tags}, nil
+    md := &PackageMetadata{Name: name, Versions: list, DistTags: tags}
+    if vc.cache != nil {
+        if b, e := json.Marshal(md); e == nil { _ = vc.cache.Set(ctx, "pkg:meta:"+name, string(b)) }
+    }
+    if vc.lru != nil {
+        if b, e := json.Marshal(md); e == nil { vc.lru.Set("pkg:meta:"+name, string(b)) }
+    }
+    return md, nil
 }
 
 func (vc *Controller) ResolveVersion(ctx context.Context, name string, rng string) (string, error) {

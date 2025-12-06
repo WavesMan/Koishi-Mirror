@@ -18,9 +18,17 @@ type Config struct {
 	TENCENT_COSBucket    string
 	TENCENT_COSPrefix    string
 
-	// CDN 配置
-	CDNEndpoint string
-	CDNEnabled  bool
+    // CDN 配置
+    CDNEndpoint string
+    CDNEnabled  bool
+
+    // 回填配置
+    BackfillEnabled bool
+    BackfillBatch   int
+
+    LocalCacheEnabled bool
+    LocalCacheSize    int
+    CacheSoftTTL      time.Duration
 
 	// 同步配置
 	DataSourceURL        string
@@ -74,10 +82,39 @@ func LoadConfig() *Config {
 	if v := getEnv("CDNEnabled", ""); v != "" {
 		cdnEnabled = strings.EqualFold(v, "true")
 	}
-	cdnEndpoint := getEnv("CDN_ENDPOINT", "")
-	if v := getEnv("CDNEndpoint", ""); v != "" {
-		cdnEndpoint = v
-	}
+    cdnEndpoint := getEnv("CDN_ENDPOINT", "")
+    if v := getEnv("CDNEndpoint", ""); v != "" {
+        cdnEndpoint = v
+    }
+
+    backfillEnabled := strings.EqualFold(getEnv("BACKFILL_ENABLED", "false"), "true")
+    if v := getEnv("BackfillEnabled", ""); v != "" {
+        backfillEnabled = strings.EqualFold(v, "true")
+    }
+    backfillBatch := 50
+    if v := getEnv("BACKFILL_BATCH", ""); v != "" {
+        if n, e := strconv.Atoi(v); e == nil { backfillBatch = n }
+    }
+    if v := getEnv("BackfillBatch", ""); v != "" {
+        if n, e := strconv.Atoi(v); e == nil { backfillBatch = n }
+    }
+
+    localCacheEnabled := strings.EqualFold(getEnv("LOCAL_CACHE_ENABLED", "false"), "true")
+    if v := getEnv("LocalCacheEnabled", ""); v != "" {
+        localCacheEnabled = strings.EqualFold(v, "true")
+    }
+    localCacheSize := 10000
+    if v := getEnv("LOCAL_CACHE_SIZE", ""); v != "" {
+        if n, e := strconv.Atoi(v); e == nil { localCacheSize = n }
+    }
+    if v := getEnv("LocalCacheSize", ""); v != "" {
+        if n, e := strconv.Atoi(v); e == nil { localCacheSize = n }
+    }
+
+    cacheSoftTTL, _ := time.ParseDuration(getEnv("CACHE_SOFT_TTL", "5m"))
+    if v := getEnv("CacheSoftTTL", ""); v != "" {
+        if d, e := time.ParseDuration(v); e == nil { cacheSoftTTL = d }
+    }
 
 	icpEnabled := strings.EqualFold(getEnv("ICP_ENABLED", "false"), "true")
 	if v := getEnv("ICPEnabled", ""); v != "" {
@@ -109,8 +146,13 @@ func LoadConfig() *Config {
 		TENCENT_COSBucket:    getEnv("TENCENT_COS_BUCKET", "waveyo-koishi-mirror"),
 		TENCENT_COSPrefix:    getEnv("TENCENT_COS_PREFIX", "packages/"),
 
-		CDNEndpoint: cdnEndpoint,
-		CDNEnabled:  cdnEnabled,
+        CDNEndpoint: cdnEndpoint,
+        CDNEnabled:  cdnEnabled,
+        BackfillEnabled: backfillEnabled,
+        BackfillBatch:   backfillBatch,
+        LocalCacheEnabled: localCacheEnabled,
+        LocalCacheSize:    localCacheSize,
+        CacheSoftTTL:      cacheSoftTTL,
 
 		// 同步配置
 		DataSourceURL:        getEnv("DATA_SOURCE_URL", "https://ks-store.waveyo.cn/index.json"),

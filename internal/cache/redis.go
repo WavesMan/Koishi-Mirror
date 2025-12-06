@@ -32,3 +32,17 @@ func (r *Redis) Del(ctx context.Context, key string) error {
     return r.cli.Del(ctx, key).Err()
 }
 
+func (r *Redis) TTL(ctx context.Context, key string) (time.Duration, error) {
+    if r == nil || r.cli == nil { return 0, redis.Nil }
+    return r.cli.TTL(ctx, key).Result()
+}
+
+func (r *Redis) SetMany(ctx context.Context, kv map[string]string) error {
+    if r == nil || r.cli == nil || len(kv) == 0 { return nil }
+    pipe := r.cli.Pipeline()
+    for k, v := range kv {
+        pipe.Set(ctx, k, v, r.ttl)
+    }
+    _, err := pipe.Exec(ctx)
+    return err
+}
