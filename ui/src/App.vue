@@ -32,6 +32,7 @@
         <div class="footer-left">
           <p class="copyright">© 2025-{{ new Date().getFullYear() }} WaveYo Koishi Mirror</p>
           <p class="description">高性能、安全可靠的 Koishi Plugins 镜像服务</p>
+          <p class="version-info" v-if="git && git.commit">版本: {{ git.branch }}@{{ git.commit }} · {{ git.date }}</p>
         </div>
         <div class="icp-links">
           <a v-if="status.icpEnabled && status.icpRecord" :href="status.icpUrl || 'https://beian.miit.gov.cn'" target="_blank">{{ status.icpRecord }}</a>
@@ -73,6 +74,7 @@ export default {
       securityRecord: '',
       securityUrl: ''
     })
+    const git = typeof __APP_GIT__ !== 'undefined' ? __APP_GIT__ : {}
 
     const renderMarkdown = (md) => {
       // 基础 Markdown 渲染（标题、粗体、斜体、链接、列表、代码块）
@@ -124,7 +126,7 @@ export default {
       fetchStatus()
     })
 
-    return { showPolicy, policyHtml, openPolicy, closePolicy, status }
+    return { showPolicy, policyHtml, openPolicy, closePolicy, status, git }
   }
 }
 </script>
@@ -248,6 +250,8 @@ export default {
 .icp-links { display: flex; gap: 1rem; min-height: 22px; }
 .icp-links a { color: var(--text-secondary); font-size: 0.875rem; }
 .icp-links a:hover { color: var(--primary-color); }
+
+.version-info { color: var(--text-secondary); font-size: 0.75rem; }
 
 @media (max-width: 768px) {
   .footer-content { flex-direction: column; align-items: flex-start; gap: 0.75rem; }
