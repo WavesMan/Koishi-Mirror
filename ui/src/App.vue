@@ -233,6 +233,8 @@ export default {
   font-size: 0.875rem;
 }
 
+.footer-left { display: flex; flex-direction: column; gap: 0.25rem; }
+
 .footer-right {
   display: flex;
   gap: 1.5rem;

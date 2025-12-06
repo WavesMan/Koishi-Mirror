@@ -96,10 +96,14 @@ func main() {
 	handler.RegisterRoutes(r)
 
 	// 创建HTTP服务器
-	srv := &http.Server{
-		Addr:    ":" + cfg.APIPort,
-		Handler: r,
-	}
+    srv := &http.Server{
+        Addr:           ":" + cfg.APIPort,
+        Handler:        r,
+        ReadTimeout:    cfg.ServerReadTimeout,
+        WriteTimeout:   cfg.ServerWriteTimeout,
+        IdleTimeout:    cfg.ServerIdleTimeout,
+        MaxHeaderBytes: cfg.MaxHeaderBytes,
+    }
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()

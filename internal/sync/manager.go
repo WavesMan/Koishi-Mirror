@@ -30,6 +30,8 @@ type SyncManager struct {
     ds         *datasource.Source
     logger     *logging.Logger
     rcache     interface{ Set(context.Context, string, string) error; SetMany(context.Context, map[string]string) error }
+    jobsMu     sync.Mutex
+    jobs       map[string]bool
 }
 
 // NewSyncManager 构造函数：通过依赖注入保持灵活组合，避免硬编码实现。
@@ -55,6 +57,36 @@ func (sm *SyncManager) SetCaches(rc interface{ Set(context.Context, string, stri
 func (sm *SyncManager) SetDataSource(ds *datasource.Source) { sm.ds = ds }
 // SetLogger 注入日志器，用于审计与定位问题。
 func (sm *SyncManager) SetLogger(l *logging.Logger) { sm.logger = l }
+
+func (sm *SyncManager) TryStartJob(name string) bool {
+    sm.jobsMu.Lock()
+    defer sm.jobsMu.Unlock()
+    if sm.jobs == nil {
+        sm.jobs = make(map[string]bool)
+    }
+    if sm.jobs[name] {
+        return false
+    }
+    sm.jobs[name] = true
+    return true
+}
+
+func (sm *SyncManager) FinishJob(name string) {
+    sm.jobsMu.Lock()
+    if sm.jobs != nil {
+        delete(sm.jobs, name)
+    }
+    sm.jobsMu.Unlock()
+}
+
+func (sm *SyncManager) IsJobRunning(name string) bool {
+    sm.jobsMu.Lock()
+    defer sm.jobsMu.Unlock()
+    if sm.jobs == nil {
+        return false
+    }
+    return sm.jobs[name]
+}
 
 // GetSyncState 获取当前同步状态快照（读锁保护）。
 // 为什么：供 API/UI 查询，不暴露内部并发细节。

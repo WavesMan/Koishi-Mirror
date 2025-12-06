@@ -39,16 +39,16 @@ type Config struct {
 	DataSourceMaxRetries int
 	LogLevel             string
 
-	// API 配置
-	APIPort string
+    // API 配置
+    APIPort string
 
-	// 缓存配置
+    // 缓存配置
 	RedisAddr     string
 	RedisPassword string
 	RedisDB       int
 	CacheTTL      time.Duration
 
-	// 数据库配置
+    // 数据库配置
 	PGHost     string
 	PGPort     string
 	PGUser     string
@@ -56,12 +56,23 @@ type Config struct {
 	PGDB       string
 	PGSSLMode  string
 
-	// ICP 配置
-	ICPEnabled     bool
-	ICPRecord      string
-	ICPUrl         string
-	SecurityRecord string
-	SecurityUrl    string
+    // ICP 配置
+    ICPEnabled     bool
+    ICPRecord      string
+    ICPUrl         string
+    SecurityRecord string
+    SecurityUrl    string
+
+    // Server 超时与头部限制
+    ServerReadTimeout  time.Duration
+    ServerWriteTimeout time.Duration
+    ServerIdleTimeout  time.Duration
+    MaxHeaderBytes     int
+
+    // 限流配置
+    RLEnabled    bool
+    RLGlobalQPS  int
+    RLPerIPQPS   int
 }
 
 // LoadConfig 从环境变量加载配置
@@ -73,8 +84,8 @@ func LoadConfig() *Config {
 	redisDB, _ := strconv.Atoi(getEnv("REDIS_DB", "0"))
 	cacheTTL, _ := time.ParseDuration(getEnv("CACHE_TTL", "10m"))
 	dsTimeout, _ := time.ParseDuration(getEnv("DATA_SOURCE_TIMEOUT", "15s"))
-	dsMaxRetries, _ := strconv.Atoi(getEnv("DATA_SOURCE_MAX_RETRIES", "3"))
-	logLevel := getEnv("LOG_LEVEL", "info")
+    dsMaxRetries, _ := strconv.Atoi(getEnv("DATA_SOURCE_MAX_RETRIES", "3"))
+    logLevel := getEnv("LOG_LEVEL", "info")
 	if v := getEnv("LogLevel", ""); v != "" {
 		logLevel = v
 	}
@@ -142,12 +153,21 @@ func LoadConfig() *Config {
 	if v := getEnv("SecurityRecord", ""); v != "" {
 		securityRecord = v
 	}
-	securityUrl := getEnv("SECURITY_URL", "")
-	if v := getEnv("SecurityUrl", ""); v != "" {
-		securityUrl = v
-	}
+    securityUrl := getEnv("SECURITY_URL", "")
+    if v := getEnv("SecurityUrl", ""); v != "" {
+        securityUrl = v
+    }
 
-	return &Config{
+    readTimeout, _ := time.ParseDuration(getEnv("READ_TIMEOUT", "10s"))
+    writeTimeout, _ := time.ParseDuration(getEnv("WRITE_TIMEOUT", "20s"))
+    idleTimeout, _ := time.ParseDuration(getEnv("IDLE_TIMEOUT", "60s"))
+    maxHeaderBytes, _ := strconv.Atoi(getEnv("MAX_HEADER_BYTES", "1048576"))
+
+    rlEnabled := strings.EqualFold(getEnv("RL_ENABLED", "false"), "true")
+    rlGlobalQPS, _ := strconv.Atoi(getEnv("RL_GLOBAL_QPS", "0"))
+    rlPerIPQPS, _ := strconv.Atoi(getEnv("RL_PER_IP_QPS", "0"))
+
+    return &Config{
 		// TENCENT_COS 配置
 		TencentCosendpoint:  getEnv("TENCENT_COS_ENDPOINT", ""),
 		TencentCosaccesskey: getEnv("TENCENT_COS_ACCESS_KEY", ""),
@@ -171,10 +191,10 @@ func LoadConfig() *Config {
 		MaxRetries:           maxRetries,
 		DataSourceTimeout:    dsTimeout,
 		DataSourceMaxRetries: dsMaxRetries,
-		LogLevel:             logLevel,
+        LogLevel:             logLevel,
 
 		// API 配置
-		APIPort: getEnv("API_PORT", "8080"),
+        APIPort: getEnv("API_PORT", "8080"),
 
 		// 缓存配置
 		RedisAddr:     getEnv("REDIS_ADDR", ""),
@@ -194,9 +214,18 @@ func LoadConfig() *Config {
 		ICPEnabled:     icpEnabled,
 		ICPRecord:      icpRecord,
 		ICPUrl:         icpUrl,
-		SecurityRecord: securityRecord,
-		SecurityUrl:    securityUrl,
-	}
+        SecurityRecord: securityRecord,
+        SecurityUrl:    securityUrl,
+
+        ServerReadTimeout:  readTimeout,
+        ServerWriteTimeout: writeTimeout,
+        ServerIdleTimeout:  idleTimeout,
+        MaxHeaderBytes:     maxHeaderBytes,
+
+        RLEnabled:   rlEnabled,
+        RLGlobalQPS: rlGlobalQPS,
+        RLPerIPQPS:  rlPerIPQPS,
+    }
 }
 
 // getEnv 获取环境变量，如果不存在则返回默认值
@@ -209,27 +238,27 @@ func getEnv(key, defaultValue string) string {
 }
 
 func loadDotEnv() {
-	paths := []string{".env", ".env.example"}
-	for _, p := range paths {
-		f, err := os.Open(p)
-		if err != nil {
-			continue
-		}
-		scanner := bufio.NewScanner(f)
-		for scanner.Scan() {
-			line := strings.TrimSpace(scanner.Text())
-			if line == "" || strings.HasPrefix(line, "#") {
-				continue
-			}
-			idx := strings.Index(line, "=")
-			if idx <= 0 {
-				continue
-			}
-			key := strings.TrimSpace(line[:idx])
-			val := strings.TrimSpace(line[idx+1:])
-			_ = os.Setenv(key, val)
-		}
-		_ = f.Close()
-		break
-	}
+    paths := []string{".env", ".env.example"}
+    for _, p := range paths {
+        f, err := os.Open(p)
+        if err != nil {
+            continue
+        }
+        scanner := bufio.NewScanner(f)
+        for scanner.Scan() {
+            line := strings.TrimSpace(scanner.Text())
+            if line == "" || strings.HasPrefix(line, "#") {
+                continue
+            }
+            idx := strings.Index(line, "=")
+            if idx <= 0 {
+                continue
+            }
+            key := strings.TrimSpace(line[:idx])
+            val := strings.TrimSpace(line[idx+1:])
+            _ = os.Setenv(key, val)
+        }
+        _ = f.Close()
+        break
+    }
 }
