@@ -1,25 +1,26 @@
 package main
 
 import (
-    "context"
-    "fmt"
-    "log"
-    "net/http"
-    "net"
-    "os"
-    "os/signal"
-    "syscall"
-    "time"
+	"context"
+	"errors"
+	"fmt"
+	"log"
+	"net"
+	"net/http"
+	"os"
+	"os/signal"
+	"syscall"
+	"time"
 
-    "github.com/gin-gonic/gin"
-    "npm-mirror/config"
-    "npm-mirror/internal/api"
-    "npm-mirror/internal/s3client"
-    "npm-mirror/internal/sync"
-    pgstore "npm-mirror/internal/storage/postgres"
-    "npm-mirror/internal/cache"
-    "npm-mirror/internal/datasource"
-    "npm-mirror/internal/logging"
+	"github.com/gin-gonic/gin"
+	"npm-mirror/config"
+	"npm-mirror/internal/api"
+	"npm-mirror/internal/cache"
+	"npm-mirror/internal/datasource"
+	"npm-mirror/internal/logging"
+	"npm-mirror/internal/s3client"
+	pgstore "npm-mirror/internal/storage/postgres"
+	"npm-mirror/internal/sync"
 )
 
 func main() {
@@ -32,8 +33,8 @@ func main() {
 		log.Fatalf("初始化S3客户端失败: %v", err)
 	}
 
-    // 初始化同步管理器
-    syncManager := sync.NewSyncManager(cfg, s3Client)
+	// 初始化同步管理器
+	syncManager := sync.NewSyncManager(cfg, s3Client)
 
 	// 初始化Postgres（可选）
 	var store *pgstore.Store
@@ -55,20 +56,22 @@ func main() {
 		syncManager.SetStore(store)
 	}
 
-    // 初始化缓存与数据源
-    rd := cache.NewRedis(cfg.RedisAddr, cfg.RedisPassword, cfg.RedisDB, cfg.CacheTTL)
-    ds := datasource.New(cfg, rd)
-    syncManager.SetDataSource(ds)
+	// 初始化缓存与数据源
+	rd := cache.NewRedis(cfg.RedisAddr, cfg.RedisPassword, cfg.RedisDB, cfg.CacheTTL)
+	ds := datasource.New(cfg, rd)
+	syncManager.SetDataSource(ds)
 
-    // 初始化日志
-    logger := logging.New(cfg.LogLevel, store)
-    syncManager.SetLogger(logger)
-    ds.SetLogger(logger)
-    s3Client.SetLogger(logger)
-    if store != nil { _ = store.PurgeLogsOlderThan(context.Background(), 30) }
-    if store != nil {
-        logger.Info("health", "db_log_test_boot", map[string]interface{}{"ok": true})
-    }
+	// 初始化日志
+	logger := logging.New(cfg.LogLevel, store)
+	syncManager.SetLogger(logger)
+	ds.SetLogger(logger)
+	s3Client.SetLogger(logger)
+	if store != nil {
+		_ = store.PurgeLogsOlderThan(context.Background(), 30)
+	}
+	if store != nil {
+		logger.Info("health", "db_log_test_boot", map[string]interface{}{"ok": true})
+	}
 
 	// 初始化Gin路由
 	gin.SetMode(gin.ReleaseMode)
@@ -89,7 +92,7 @@ func main() {
 	})
 
 	// 注册路由
-    handler := api.NewHandler(cfg, s3Client, syncManager, store, ds)
+	handler := api.NewHandler(cfg, s3Client, syncManager, store, ds)
 	handler.RegisterRoutes(r)
 
 	// 创建HTTP服务器
@@ -98,29 +101,29 @@ func main() {
 		Handler: r,
 	}
 
-    ctx, cancel := context.WithCancel(context.Background())
-    defer cancel()
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
 
-    ln, err := net.Listen("tcp", ":"+cfg.APIPort)
-    if err != nil {
-        log.Fatalf("监听端口失败: %v", err)
-    }
-    fmt.Printf("服务启动成功，监听端口: %s\n", cfg.APIPort)
-    go func() {
-        if err := srv.Serve(ln); err != nil && err != http.ErrServerClosed {
-            log.Fatalf("服务启动失败: %v", err)
-        }
-    }()
+	ln, err := net.Listen("tcp", ":"+cfg.APIPort)
+	if err != nil {
+		log.Fatalf("监听端口失败: %v", err)
+	}
+	fmt.Printf("服务启动成功，监听端口: %s\n", cfg.APIPort)
+	go func() {
+		if err := srv.Serve(ln); err != nil && !errors.Is(err, http.ErrServerClosed) {
+			log.Fatalf("服务启动失败: %v", err)
+		}
+	}()
 
-    go func() {
-        start := time.Now()
-        if err := syncManager.BootSync(ctx); err != nil {
-            logger.Error("boot", "首次同步失败", map[string]interface{}{"error": err.Error()})
-        } else {
-            logger.Info("boot", "首次同步完成", map[string]interface{}{"seconds": fmt.Sprintf("%.2f", time.Since(start).Seconds())})
-        }
-        syncManager.StartCron(ctx)
-    }()
+	go func() {
+		start := time.Now()
+		if err := syncManager.BootSync(ctx); err != nil {
+			logger.Error("boot", "首次同步失败", map[string]interface{}{"error": err.Error()})
+		} else {
+			logger.Info("boot", "首次同步完成", map[string]interface{}{"seconds": fmt.Sprintf("%.2f", time.Since(start).Seconds())})
+		}
+		syncManager.StartCron(ctx)
+	}()
 
 	// 等待中断信号，优雅关闭
 	quit := make(chan os.Signal, 1)

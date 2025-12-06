@@ -11,24 +11,24 @@ import (
 // Config 应用配置
 type Config struct {
 	// TENCENT_COS 配置
-	TENCENT_COSEndpoint  string
-	TENCENT_COSAccessKey string
-	TENCENT_COSSecretKey string
-	TENCENT_COSRegion    string
-	TENCENT_COSBucket    string
-	TENCENT_COSPrefix    string
+	TencentCosendpoint  string
+	TencentCosaccesskey string
+	TencentCossecretkey string
+	TencentCosregion    string
+	TencentCosbucket    string
+	TencentCosprefix    string
 
-    // CDN 配置
-    CDNEndpoint string
-    CDNEnabled  bool
+	// CDN 配置
+	CDNEndpoint string
+	CDNEnabled  bool
 
-    // 回填配置
-    BackfillEnabled bool
-    BackfillBatch   int
+	// 回填配置
+	BackfillEnabled bool
+	BackfillBatch   int
 
-    LocalCacheEnabled bool
-    LocalCacheSize    int
-    CacheSoftTTL      time.Duration
+	LocalCacheEnabled bool
+	LocalCacheSize    int
+	CacheSoftTTL      time.Duration
 
 	// 同步配置
 	DataSourceURL        string
@@ -82,39 +82,49 @@ func LoadConfig() *Config {
 	if v := getEnv("CDNEnabled", ""); v != "" {
 		cdnEnabled = strings.EqualFold(v, "true")
 	}
-    cdnEndpoint := getEnv("CDN_ENDPOINT", "")
-    if v := getEnv("CDNEndpoint", ""); v != "" {
-        cdnEndpoint = v
-    }
+	cdnEndpoint := getEnv("CDN_ENDPOINT", "")
+	if v := getEnv("CDNEndpoint", ""); v != "" {
+		cdnEndpoint = v
+	}
 
-    backfillEnabled := strings.EqualFold(getEnv("BACKFILL_ENABLED", "false"), "true")
-    if v := getEnv("BackfillEnabled", ""); v != "" {
-        backfillEnabled = strings.EqualFold(v, "true")
-    }
-    backfillBatch := 50
-    if v := getEnv("BACKFILL_BATCH", ""); v != "" {
-        if n, e := strconv.Atoi(v); e == nil { backfillBatch = n }
-    }
-    if v := getEnv("BackfillBatch", ""); v != "" {
-        if n, e := strconv.Atoi(v); e == nil { backfillBatch = n }
-    }
+	backfillEnabled := strings.EqualFold(getEnv("BACKFILL_ENABLED", "false"), "true")
+	if v := getEnv("BackfillEnabled", ""); v != "" {
+		backfillEnabled = strings.EqualFold(v, "true")
+	}
+	backfillBatch := 50
+	if v := getEnv("BACKFILL_BATCH", ""); v != "" {
+		if n, e := strconv.Atoi(v); e == nil {
+			backfillBatch = n
+		}
+	}
+	if v := getEnv("BackfillBatch", ""); v != "" {
+		if n, e := strconv.Atoi(v); e == nil {
+			backfillBatch = n
+		}
+	}
 
-    localCacheEnabled := strings.EqualFold(getEnv("LOCAL_CACHE_ENABLED", "false"), "true")
-    if v := getEnv("LocalCacheEnabled", ""); v != "" {
-        localCacheEnabled = strings.EqualFold(v, "true")
-    }
-    localCacheSize := 10000
-    if v := getEnv("LOCAL_CACHE_SIZE", ""); v != "" {
-        if n, e := strconv.Atoi(v); e == nil { localCacheSize = n }
-    }
-    if v := getEnv("LocalCacheSize", ""); v != "" {
-        if n, e := strconv.Atoi(v); e == nil { localCacheSize = n }
-    }
+	localCacheEnabled := strings.EqualFold(getEnv("LOCAL_CACHE_ENABLED", "false"), "true")
+	if v := getEnv("LocalCacheEnabled", ""); v != "" {
+		localCacheEnabled = strings.EqualFold(v, "true")
+	}
+	localCacheSize := 10000
+	if v := getEnv("LOCAL_CACHE_SIZE", ""); v != "" {
+		if n, e := strconv.Atoi(v); e == nil {
+			localCacheSize = n
+		}
+	}
+	if v := getEnv("LocalCacheSize", ""); v != "" {
+		if n, e := strconv.Atoi(v); e == nil {
+			localCacheSize = n
+		}
+	}
 
-    cacheSoftTTL, _ := time.ParseDuration(getEnv("CACHE_SOFT_TTL", "5m"))
-    if v := getEnv("CacheSoftTTL", ""); v != "" {
-        if d, e := time.ParseDuration(v); e == nil { cacheSoftTTL = d }
-    }
+	cacheSoftTTL, _ := time.ParseDuration(getEnv("CACHE_SOFT_TTL", "5m"))
+	if v := getEnv("CacheSoftTTL", ""); v != "" {
+		if d, e := time.ParseDuration(v); e == nil {
+			cacheSoftTTL = d
+		}
+	}
 
 	icpEnabled := strings.EqualFold(getEnv("ICP_ENABLED", "false"), "true")
 	if v := getEnv("ICPEnabled", ""); v != "" {
@@ -139,20 +149,20 @@ func LoadConfig() *Config {
 
 	return &Config{
 		// TENCENT_COS 配置
-		TENCENT_COSEndpoint:  getEnv("TENCENT_COS_ENDPOINT", ""),
-		TENCENT_COSAccessKey: getEnv("TENCENT_COS_ACCESS_KEY", ""),
-		TENCENT_COSSecretKey: getEnv("TENCENT_COS_SECRET_KEY", ""),
-		TENCENT_COSRegion:    getEnv("TENCENT_COS_REGION", "ap_shanghai"),
-		TENCENT_COSBucket:    getEnv("TENCENT_COS_BUCKET", "waveyo-koishi-mirror"),
-		TENCENT_COSPrefix:    getEnv("TENCENT_COS_PREFIX", "packages/"),
+		TencentCosendpoint:  getEnv("TENCENT_COS_ENDPOINT", ""),
+		TencentCosaccesskey: getEnv("TENCENT_COS_ACCESS_KEY", ""),
+		TencentCossecretkey: getEnv("TENCENT_COS_SECRET_KEY", ""),
+		TencentCosregion:    getEnv("TENCENT_COS_REGION", "ap_shanghai"),
+		TencentCosbucket:    getEnv("TENCENT_COS_BUCKET", "waveyo-koishi-mirror"),
+		TencentCosprefix:    getEnv("TENCENT_COS_PREFIX", "packages/"),
 
-        CDNEndpoint: cdnEndpoint,
-        CDNEnabled:  cdnEnabled,
-        BackfillEnabled: backfillEnabled,
-        BackfillBatch:   backfillBatch,
-        LocalCacheEnabled: localCacheEnabled,
-        LocalCacheSize:    localCacheSize,
-        CacheSoftTTL:      cacheSoftTTL,
+		CDNEndpoint:       cdnEndpoint,
+		CDNEnabled:        cdnEnabled,
+		BackfillEnabled:   backfillEnabled,
+		BackfillBatch:     backfillBatch,
+		LocalCacheEnabled: localCacheEnabled,
+		LocalCacheSize:    localCacheSize,
+		CacheSoftTTL:      cacheSoftTTL,
 
 		// 同步配置
 		DataSourceURL:        getEnv("DATA_SOURCE_URL", "https://ks-store.waveyo.cn/index.json"),
@@ -217,9 +227,9 @@ func loadDotEnv() {
 			}
 			key := strings.TrimSpace(line[:idx])
 			val := strings.TrimSpace(line[idx+1:])
-			os.Setenv(key, val)
+			_ = os.Setenv(key, val)
 		}
-		f.Close()
+		_ = f.Close()
 		break
 	}
 }

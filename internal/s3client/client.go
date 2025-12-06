@@ -27,10 +27,10 @@ type Client struct {
 
 // New 创建新的TENCENT_COS客户端
 func New(cfg *config.Config) (*Client, error) {
-	if cfg.TENCENT_COSEndpoint == "" {
+	if cfg.TencentCosendpoint == "" {
 		return nil, fmt.Errorf("TENCENT_COS endpoint is required")
 	}
-	u, err := url.Parse(cfg.TENCENT_COSEndpoint)
+	u, err := url.Parse(cfg.TencentCosendpoint)
 	if err != nil {
 		return nil, fmt.Errorf("invalid endpoint: %v", err)
 	}
@@ -39,7 +39,7 @@ func New(cfg *config.Config) (*Client, error) {
 	isCosService := strings.HasPrefix(host, "cos.") && isMyQcloud
 	var bucketURL *url.URL
 	if isCosService {
-		b := fmt.Sprintf("https://%s.cos.%s.myqcloud.com", cfg.TENCENT_COSBucket, cfg.TENCENT_COSRegion)
+		b := fmt.Sprintf("https://%s.cos.%s.myqcloud.com", cfg.TencentCosbucket, cfg.TencentCosregion)
 		bucketURL, _ = url.Parse(b)
 	} else {
 		bucketURL = u
@@ -47,14 +47,14 @@ func New(cfg *config.Config) (*Client, error) {
 	base := &cos.BaseURL{BucketURL: bucketURL}
 	cli := cos.NewClient(base, &http.Client{
 		Transport: &cos.AuthorizationTransport{
-			SecretID:  cfg.TENCENT_COSAccessKey,
-			SecretKey: cfg.TENCENT_COSSecretKey,
+			SecretID:  cfg.TencentCosaccesskey,
+			SecretKey: cfg.TencentCossecretkey,
 		},
 	})
 	return &Client{
 		client: cli,
-		bucket: cfg.TENCENT_COSBucket,
-		prefix: strings.ReplaceAll(cfg.TENCENT_COSPrefix, "\\", "/"),
+		bucket: cfg.TencentCosbucket,
+		prefix: strings.ReplaceAll(cfg.TencentCosprefix, "\\", "/"),
 		config: cfg,
 	}, nil
 }
